@@ -121,12 +121,24 @@ export class PreloadScene extends Phaser.Scene {
         // Se cargan con error-handler para no romper si el archivo no existe.
         this.load.on('loaderror', (file) => {
             console.warn(`[PreloadScene] Asset no encontrado: ${file.key} (${file.src}) — se usará fallback procedimental.`);
+            const messageEl = document.getElementById('error-message');
+            const consoleEl = document.getElementById('error-console');
+            if (messageEl && consoleEl) {
+                consoleEl.style.display = 'block';
+                const currentText = messageEl.textContent;
+                messageEl.textContent = (currentText ? currentText + '\n' : '') + `⚠️ [Phaser Loader Error] No se pudo cargar el asset "${file.key}" desde la ruta "${file.src}". Asegúrate de que el archivo existe en public/assets/images/.`;
+            }
         });
 
-        this.load.image('sky_sunset',   'assets/images/sky_sunset.png');
-        this.load.image('terrain_dirt', 'assets/images/terrain_dirt.png');
-        this.load.image('terrain_grass','assets/images/terrain_grass.png');
-        this.load.image('sprite_palm',  'assets/images/sprite_palm.png');
+        const buster = `?t=${Date.now()}`;
+        this.load.image('sky_sunset',   'assets/images/sky_sunset.png' + buster);
+        this.load.image('terrain_dirt', 'assets/images/terrain_dirt.png' + buster);
+        this.load.image('terrain_grass','assets/images/terrain_grass4.png' + buster);
+        this.load.image('sprite_palm',  'assets/images/sprite_palm.png' + buster);
+        this.load.image('sprite_billboard', 'assets/images/welcome_sign.png' + buster);
+        this.load.image('sprite_crane', 'assets/images/crane.png' + buster);
+        this.load.image('sprite_hut', 'assets/images/el_aljibe_hut.png' + buster);
+        this.load.image('sprite_antenna', 'assets/images/radio_tower.png' + buster);
     }
 
     create() {

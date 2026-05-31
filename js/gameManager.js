@@ -28,7 +28,7 @@ export class GameManager {
                 default: 'matter',
                 matter: {
                     gravity: { y: 1 },
-                    debug: true
+                    debug: false
                 }
             },
             scene: [BootScene, PreloadScene, GameScene, UIScene, GameOverScene],

@@ -62,7 +62,8 @@ export class TerrainManager {
         // ══════════════════════════════════════════════════════════
         //  1. CAPA VISUAL (RenderTexture)
         // ══════════════════════════════════════════════════════════
-        this.rt = this.scene.add.renderTexture(0, 0, this.width, this.height).setOrigin(0, 0);
+        this.rt = this.scene.add.renderTexture(0, 0, this.width, this.height).setOrigin(0, 0).setDepth(1);
+
 
         // ─── A) FUNCIÓN DE ALTURA ───
         const islandWidth = this.islandEndX - this.islandStartX;
@@ -125,22 +126,18 @@ export class TerrainManager {
 
         // ─── H) AGUA ───
         if (cfg.hasWater) {
-            // Capa base del agua
-            const waterRect = this.scene.add.rectangle(
-                this.width / 2, this.height - 40,
-                this.width, 80,
-                cfg.waterColor, 0.85
-            );
-            waterRect.setDepth(5);
+            // Capa base de agua animada
+            this.waterGfx = this.scene.add.graphics();
+            this.waterGfx.setDepth(5);
 
             if (cfg.biome === 'SANTA_CRUZ') {
-                // Brillo del atardecer reflejado en el agua
-                const waterShine = this.scene.add.rectangle(
-                    this.width / 2, this.height - 60,
-                    this.width, 20,
-                    0xff8c00, 0.18
+                // Brillo del atardecer reflejado en el agua (atrás de las olas)
+                this.waterShine = this.scene.add.rectangle(
+                    this.width / 2, this.height - 35,
+                    this.width, 70,
+                    0xff8c00, 0.10
                 );
-                waterShine.setDepth(6);
+                this.waterShine.setDepth(4);
             }
         }
 
@@ -166,11 +163,9 @@ export class TerrainManager {
     _buildTexturedTerrain(cfg) {
         const TILE = 128;
 
-        // 1. Crear imagen temporal reutilizable para estampar tiles
+        // 1. Estampar dirt cubriendo TODA la superficie del mapa
         const stamp = this.scene.make.image({ key: 'terrain_dirt', add: false });
         stamp.setDisplaySize(TILE, TILE);
-
-        // 2. Estampar dirt cubriendo TODA la superficie del mapa
         for (let tx = 0; tx <= this.width; tx += TILE) {
             for (let ty = 0; ty <= this.height; ty += TILE) {
                 stamp.setPosition(tx + TILE / 2, ty + TILE / 2);
@@ -179,38 +174,71 @@ export class TerrainManager {
         }
         stamp.destroy();
 
-        // 3. Crear la máscara «cielo»: el polígono que cubre todo lo que NO es terreno.
-        //    Al borrarlo del RT, solo queda el terreno con su textura.
+        // 2. Borrar la región de CIELO (todo lo que queda ENCIMA de la curva del terreno).
+        //    El polígono cubre:
+        //      • La franja superior completa (de (0,0) a (width,0))
+        //      • Baja por la línea del terreno de izquierda a derecha
+        //      • Sube de vuelta por los bordes exteriores
+        //    De esta forma, al borrarlo del RT queda SOLO el cuerpo del terreno.
         const skyMask = this.scene.make.graphics({ add: false });
         skyMask.fillStyle(0xffffff, 1);
         skyMask.beginPath();
+
+        // Esquina superior izquierda
         skyMask.moveTo(0, 0);
+        // Borde superior hasta la derecha
         skyMask.lineTo(this.width, 0);
-        skyMask.lineTo(this.width, this.height);
-        skyMask.lineTo(this.islandEndX + 50, this.height);
+        // Borde derecho hasta el nivel del agua (fuera de la isla)
+        skyMask.lineTo(this.width, this.waterLevel);
+        // Flanco derecho exterior de la isla (cae al agua)
         skyMask.lineTo(this.islandEndX + 20, this.waterLevel);
-        // Trazar superficie en sentido inverso (de derecha a izquierda)
-        for (let x = this.islandEndX; x >= this.islandStartX; x -= 8) {
+        // Recorrer superficie del terreno de DERECHA a IZQUIERDA
+        for (let x = this.islandEndX; x >= this.islandStartX; x -= 4) {
             skyMask.lineTo(x, this.getIslandY(x));
         }
+        // Flanco izquierdo exterior de la isla
         skyMask.lineTo(this.islandStartX - 20, this.waterLevel);
-        skyMask.lineTo(this.islandStartX, this.height);
-        skyMask.lineTo(0, this.height);
+        // Borde izquierdo hasta la esquina superior
+        skyMask.lineTo(0, this.waterLevel);
+        skyMask.lineTo(0, 0);
         skyMask.closePath();
         skyMask.fillPath();
+
         this.rt.erase(skyMask, 0, 0);
         skyMask.destroy();
 
-        // 4. Tira de pasto: terrain_grass o fallback procedimental
+        // 3. Borde/orilla exterior izquierda y derecha (zona fuera de la isla = negro/agua)
+        //    Borrar también el área fuera de la isla a ambos lados
+        const sideL = this.scene.make.graphics({ add: false });
+        sideL.fillStyle(0xffffff, 1);
+        sideL.fillRect(0, 0, this.islandStartX, this.height);
+        this.rt.erase(sideL, 0, 0);
+        sideL.destroy();
+
+        const sideR = this.scene.make.graphics({ add: false });
+        sideR.fillStyle(0xffffff, 1);
+        sideR.fillRect(this.islandEndX, 0, this.width - this.islandEndX, this.height);
+        this.rt.erase(sideR, 0, 0);
+        sideR.destroy();
+
+        // 4. Tira de pasto alineada a la pendiente
         if (this.scene.textures.exists('terrain_grass')) {
-            const GRASS_W = 256;
+            const step = 12;
             const grassStamp = this.scene.make.image({ key: 'terrain_grass', add: false });
-            grassStamp.setDisplaySize(GRASS_W, 32);
-            for (let gx = this.islandStartX; gx <= this.islandEndX; gx += GRASS_W) {
-                // Centrar en el punto medio del tile, justo encima de la superficie
-                const midX = gx + GRASS_W / 2;
-                const surfY = this.getIslandY(Math.min(midX, this.islandEndX));
-                grassStamp.setPosition(midX, surfY - 8);
+            grassStamp.setDisplaySize(step * 2, 22);
+            for (let gx = this.islandStartX; gx < this.islandEndX; gx += step) {
+                const x1 = gx;
+                const x2 = Math.min(gx + step, this.islandEndX);
+                const y1 = this.getIslandY(x1);
+                const y2 = this.getIslandY(x2);
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const offsetY = 4;
+                const px = midX + Math.sin(angle) * offsetY;
+                const py = midY - Math.cos(angle) * offsetY;
+                grassStamp.setPosition(px, py);
+                grassStamp.setRotation(angle);
                 this.rt.draw(grassStamp);
             }
             grassStamp.destroy();
@@ -386,11 +414,11 @@ export class TerrainManager {
         this.rt.erase(caveGfx, 0, 0);
         this.rt.draw(caveBorderGfx, 0, 0);
 
-        // Añadir letrero de la cueva
-        this._drawCaveSign(cave);
-
         caveGfx.destroy();
         caveBorderGfx.destroy();
+
+        // Añadir letrero de la cueva
+        this._drawCaveSign(cave);
     }
 
     _drawCaveSign(cave) {
@@ -567,115 +595,131 @@ export class TerrainManager {
         });
     }
 
-    // ── Cartel "Bienvenidos a Santa Cruz de la Sierra" ──
+    // ── Cartel "Bienvenidos" ──
     drawWelcomeSign(gfx, deco) {
         const baseY = this.getIslandY(deco.x);
-        const postH = 55;
-        const boardW = 170, boardH = 36;
-        const bx = deco.x - boardW / 2;
-        const by = baseY - postH - boardH;
 
-        // Postes de madera
-        gfx.fillStyle(0x6b3a10, 1);
-        gfx.fillRect(deco.x - boardW / 2 + 15, by + boardH, 8, postH);
-        gfx.fillRect(deco.x + boardW / 2 - 23, by + boardH, 8, postH);
-        this.solidAreas.push({ x: bx + 15, y: by + boardH, w: boardW - 30, h: postH });
+        if (this.scene.textures.exists('sprite_billboard')) {
+            // Imagen real: 1337x667 px  →  queremos ~180px de ancho en juego
+            const DESIRED_W = 180;
+            const IMG_W = 1337;
+            const IMG_H = 667;
+            const sc = DESIRED_W / IMG_W;          // ≈0.1346
+            const renderW = DESIRED_W;            // 180
+            const renderH = IMG_H * sc;             // ≈89.8
 
-        // Tablero principal
-        gfx.fillStyle(0x1a5a0a, 1);
-        gfx.fillRect(bx, by, boardW, boardH);
-        gfx.lineStyle(3, 0xf5c518, 1);
-        gfx.strokeRect(bx, by, boardW, boardH);
-        gfx.lineStyle(1.5, 0xf5c518, 0.6);
-        gfx.strokeRect(bx + 4, by + 4, boardW - 8, boardH - 8);
+            const sign = this.scene.add.image(deco.x, baseY, 'sprite_billboard');
+            sign.setOrigin(0.5, 1);
+            sign.setScale(sc);
+            sign.setDepth(3);
 
-        // Escudo simplificado de SCZ (círculo verde/blanco)
-        gfx.fillStyle(0xffffff, 1);
-        gfx.fillCircle(bx + 18, by + boardH / 2, 10);
-        gfx.fillStyle(0x007730, 1);
-        gfx.fillCircle(bx + 18, by + boardH / 2, 7);
-        gfx.fillStyle(0xffd700, 1);
-        gfx.fillCircle(bx + 18, by + boardH / 2, 3);
+            // Colisión: 
+            // 1. Tablero (parte superior): ocupa el top 55% de la altura y 95% del ancho
+            const boardW = renderW * 0.95;
+            const boardH = renderH * 0.55;
+            const boardY = baseY - renderH + boardH / 2;
+            
+            // 2. Postes (parte inferior): ocupa el bottom 45% de la altura y 75% del ancho
+            const postW = renderW * 0.75;
+            const postH = renderH * 0.45;
+            const postY = baseY - postH / 2;
 
-        this.solidAreas.push({ x: bx, y: by, w: boardW, h: boardH });
+            this.scene.matter.add.rectangle(deco.x, boardY, boardW, boardH, {
+                isStatic: true, label: 'decoration'
+            });
+            this.scene.matter.add.rectangle(deco.x, postY, postW, postH, {
+                isStatic: true, label: 'decoration'
+            });
 
-        // Texto del cartel (superpuesto fuera del gfx como objeto Text)
-        this.scene.add.text(deco.x + 8, by + boardH / 2, 'BIENVENIDOS A\nSANTA CRUZ DE LA SIERRA', {
-            fontSize: '7px',
-            fontFamily: 'Arial Black, Arial',
-            color: '#ffe066',
-            stroke: '#003300',
-            strokeThickness: 1.5,
-            align: 'center',
-            lineSpacing: 1,
-        }).setOrigin(0.5, 0.5).setDepth(3);
+            // Registrar en solidAreas para isPointSolid
+            this.solidAreas.push({ x: deco.x - boardW / 2, y: boardY - boardH / 2, w: boardW, h: boardH });
+            this.solidAreas.push({ x: deco.x - postW / 2, y: postY - postH / 2, w: postW, h: postH });
+        } else {
+            const postH = 55;
+            const boardW = 170, boardH = 36;
+            const bx = deco.x - boardW / 2;
+            const by = baseY - postH - boardH;
+            gfx.fillStyle(0x6b3a10, 1);
+            gfx.fillRect(deco.x - boardW / 2 + 15, by + boardH, 8, postH);
+            gfx.fillRect(deco.x + boardW / 2 - 23, by + boardH, 8, postH);
+            gfx.fillStyle(0x1a5a0a, 1);
+            gfx.fillRect(bx, by, boardW, boardH);
+            gfx.lineStyle(3, 0xf5c518, 1);
+            gfx.strokeRect(bx, by, boardW, boardH);
+
+            this.scene.matter.add.rectangle(deco.x, baseY - postH / 2, boardW * 0.6, postH, {
+                isStatic: true, label: 'decoration'
+            });
+            this.scene.matter.add.rectangle(deco.x, by + boardH / 2, boardW, boardH, {
+                isStatic: true, label: 'decoration'
+            });
+
+            this.solidAreas.push({ x: deco.x - (boardW * 0.6) / 2, y: baseY - postH, w: boardW * 0.6, h: postH });
+            this.solidAreas.push({ x: bx, y: by, w: boardW, h: boardH });
+        }
     }
 
     // ── Torre de Radio "Sirari" ──
     drawRadioTower(gfx, deco) {
         const baseY = this.getIslandY(deco.x);
-        const tH = 220;
-        const x  = deco.x;
 
-        // Base de cemento
-        gfx.fillStyle(0x888888, 1);
-        gfx.fillRect(x - 18, baseY - 14, 36, 14);
-        this.solidAreas.push({ x: x - 18, y: baseY - 14, w: 36, h: 14 });
+        if (this.scene.textures.exists('sprite_antenna')) {
+            // Imagen real: 586x1505 px  →  queremos ~300px de alto en juego
+            const DESIRED_H = 300;
+            const IMG_W = 586;
+            const IMG_H = 1505;
+            const sc = DESIRED_H / IMG_H; // ≈0.1993
+            const renderW = IMG_W * sc;   // ≈116.8
+            const renderH = DESIRED_H;  // 300
 
-        // Cuerpo de la torre (celosía triangular que se estrecha)
-        const sections = 8;
-        for (let i = 0; i < sections; i++) {
-            const t   = i / sections;
-            const t1  = (i + 1) / sections;
-            const w0  = 16 * (1 - t * 0.7);
-            const w1  = 16 * (1 - t1 * 0.7);
-            const y0  = baseY - 14 - t * tH;
-            const y1  = baseY - 14 - t1 * tH;
+            const ant = this.scene.add.image(deco.x, baseY, 'sprite_antenna');
+            ant.setOrigin(0.5, 1);
+            ant.setScale(sc);
+            ant.setDepth(3);
 
-            // Lados de la celosía
-            gfx.lineStyle(3, 0xaaaaaa, 1);
-            gfx.lineBetween(x - w0, y0, x - w1, y1);
-            gfx.lineBetween(x + w0, y0, x + w1, y1);
+            // Colisión: torre principal (centro) + base ancha
+            const towerW = renderW * 0.22;  // parte central delgada
+            const towerH = renderH * 0.85;
+            const baseW  = renderW * 0.65;
+            const baseH  = renderH * 0.12;
 
-            // Travesaño horizontal
-            gfx.lineStyle(2, 0x999999, 1);
-            gfx.lineBetween(x - w0, y0, x + w0, y0);
+            this.scene.matter.add.rectangle(deco.x, baseY - towerH / 2, towerW, towerH, {
+                isStatic: true, label: 'decoration'
+            });
+            this.scene.matter.add.rectangle(deco.x, baseY - baseH / 2, baseW, baseH, {
+                isStatic: true, label: 'decoration'
+            });
 
-            // Diagonales cruzadas
-            gfx.lineStyle(1.5, 0x888888, 0.7);
-            gfx.lineBetween(x - w0, y0, x + w1, y1);
-            gfx.lineBetween(x + w0, y0, x - w1, y1);
+            // Registrar en solidAreas para isPointSolid
+            this.solidAreas.push({ x: deco.x - towerW / 2, y: baseY - towerH, w: towerW, h: towerH });
+            this.solidAreas.push({ x: deco.x - baseW / 2, y: baseY - baseH, w: baseW, h: baseH });
+        } else {
+            const tH = 300;
+            const x  = deco.x;
+            gfx.fillStyle(0x888888, 1);
+            gfx.fillRect(x - 18, baseY - 14, 36, 14);
+            const sections = 8;
+            for (let i = 0; i < sections; i++) {
+                const t = i / sections, t1 = (i + 1) / sections;
+                const w0 = 16 * (1 - t * 0.7), w1 = 16 * (1 - t1 * 0.7);
+                const y0 = baseY - 14 - t * tH, y1 = baseY - 14 - t1 * tH;
+                gfx.lineStyle(3, 0xaaaaaa, 1);
+                gfx.lineBetween(x - w0, y0, x - w1, y1);
+                gfx.lineBetween(x + w0, y0, x + w1, y1);
+                gfx.lineStyle(2, 0x999999, 1);
+                gfx.lineBetween(x - w0, y0, x + w0, y0);
+            }
+            gfx.fillStyle(0x999999, 1);
+            gfx.fillRect(x - 1.5, baseY - 14 - tH - 35, 3, 35);
+            gfx.fillStyle(0xff2200, 1);
+            gfx.fillCircle(x, baseY - 14 - tH - 36, 4);
+
+            this.scene.matter.add.rectangle(x, baseY - tH / 2, 20, tH, {
+                isStatic: true, label: 'decoration'
+            });
+
+            this.solidAreas.push({ x: x - 10, y: baseY - tH, w: 20, h: tH });
         }
-
-        // Plataforma de observación
-        gfx.fillStyle(0x666666, 1);
-        gfx.fillRect(x - 10, baseY - 14 - tH - 6, 20, 6);
-
-        // Antena principal
-        gfx.fillStyle(0x999999, 1);
-        gfx.fillRect(x - 1.5, baseY - 14 - tH - 35, 3, 35);
-
-        // Luces de aviación (rojas)
-        gfx.fillStyle(0xff2200, 1);
-        gfx.fillCircle(x, baseY - 14 - tH - 36, 4);
-        gfx.fillStyle(0xff4400, 0.4);
-        gfx.fillCircle(x, baseY - 14 - tH - 36, 8);
-
-        // Cables de tensión
-        gfx.lineStyle(1.5, 0x777777, 0.6);
-        gfx.lineBetween(x, baseY - 14 - tH, x - 80, baseY - 20);
-        gfx.lineBetween(x, baseY - 14 - tH, x + 80, baseY - 20);
-
-        // Letrero "SIRARI"
-        this.scene.add.text(x, baseY - 14 - tH - 45, '📡 SIRARI', {
-            fontSize: '8px',
-            fontFamily: 'Arial',
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 2,
-        }).setOrigin(0.5, 1).setDepth(3);
-
-        this.solidAreas.push({ x: x - 16, y: baseY - 14 - tH, w: 32, h: tH });
     }
 
     // ── Bandera de Bolivia ──
@@ -722,131 +766,119 @@ export class TerrainManager {
     // ── Cabaña de paja "Bar El Aljibe" ──
     drawElAljibeHut(gfx, deco) {
         const baseY = this.getIslandY(deco.x);
-        const w = 130, h = 85;
-        const x = deco.x - w / 2;
-        const y = baseY - h;
 
-        // Paredes de adobe (barro crudo)
-        gfx.fillStyle(0xd4a055, 1);
-        gfx.fillRect(x, y, w, h);
-        this.solidAreas.push({ x, y, w, h });
+        if (this.scene.textures.exists('sprite_hut')) {
+            // Imagen real: 1323x755 px  →  queremos ~200px de ancho
+            const DESIRED_W = 200;
+            const IMG_W = 1323;
+            const IMG_H = 755;
+            const sc = DESIRED_W / IMG_W; // ≈0.151
+            const renderW = DESIRED_W;          // 200
+            const renderH = IMG_H * sc;           // ≈114
 
-        // Textura de pared (líneas horizontales de adobe)
-        gfx.lineStyle(1, 0xc09040, 0.5);
-        for (let row = y + 12; row < baseY; row += 12) {
-            gfx.lineBetween(x, row, x + w, row);
+            const hut = this.scene.add.image(deco.x, baseY, 'sprite_hut');
+            hut.setOrigin(0.5, 1);
+            hut.setScale(sc);
+            hut.setDepth(3);
+
+            // Colisión: paredes (parte baja) + techo (parte alta más angosta)
+            const wallW = renderW * 0.70;
+            const wallH = renderH * 0.55;
+            const roofW = renderW * 0.90;
+            const roofH = renderH * 0.40;
+
+            this.scene.matter.add.rectangle(deco.x, baseY - wallH / 2, wallW, wallH, {
+                isStatic: true, label: 'decoration'
+            });
+            this.scene.matter.add.rectangle(deco.x, baseY - wallH - roofH / 2, roofW, roofH, {
+                isStatic: true, label: 'decoration'
+            });
+
+            // Registrar en solidAreas para isPointSolid
+            this.solidAreas.push({ x: deco.x - wallW / 2, y: baseY - wallH, w: wallW, h: wallH });
+            this.solidAreas.push({ x: deco.x - roofW / 2, y: baseY - wallH - roofH, w: roofW, h: roofH });
+        } else {
+            const w = 130, h = 85;
+            const x = deco.x - w / 2;
+            const y = baseY - h;
+            gfx.fillStyle(0xd4a055, 1);
+            gfx.fillRect(x, y, w, h);
+            gfx.fillStyle(0x9b6b20, 1);
+            gfx.fillTriangle(x - 12, y, x + w + 12, y, deco.x, y - 55);
+            gfx.fillStyle(0x5a3010, 1);
+            gfx.fillRect(deco.x - 13, y + h - 42, 26, 42);
+
+            this.scene.matter.add.rectangle(deco.x, baseY - h / 2, w, h, {
+                isStatic: true, label: 'decoration'
+            });
+
+            this.solidAreas.push({ x: x, y: y, w, h });
         }
-
-        // Techo de paja (triángulo con textura)
-        gfx.fillStyle(0x9b6b20, 1);
-        gfx.fillTriangle(x - 12, y, x + w + 12, y, deco.x, y - 55);
-        this.solidAreas.push({
-            type: 'triangle',
-            x1: x - 12, y1: y, x2: x + w + 12, y2: y, x3: deco.x, y3: y - 55,
-        });
-
-        // Líneas de paja en el techo
-        gfx.lineStyle(2, 0x7a5010, 0.6);
-        for (let i = 1; i < 7; i++) {
-            const ratio = i / 7;
-            const lx = Phaser.Math.Linear(x - 12, deco.x, ratio);
-            const rx = Phaser.Math.Linear(x + w + 12, deco.x, ratio);
-            const ty = Phaser.Math.Linear(y, y - 55, ratio);
-            gfx.lineBetween(lx, ty, rx, ty);
-        }
-
-        // Ventanas de madera
-        gfx.fillStyle(0x5a3010, 1);
-        gfx.fillRect(x + 10, y + 18, 28, 22);
-        gfx.fillRect(x + w - 38, y + 18, 28, 22);
-        gfx.fillStyle(0x6699cc, 0.4);
-        gfx.fillRect(x + 13, y + 21, 22, 16);
-        gfx.fillRect(x + w - 35, y + 21, 22, 16);
-        gfx.lineStyle(2, 0x7a5020, 1);
-        gfx.strokeRect(x + 10, y + 18, 28, 22);
-        gfx.strokeRect(x + w - 38, y + 18, 28, 22);
-
-        // Puerta de madera con arco
-        gfx.fillStyle(0x5c3010, 1);
-        gfx.fillRect(deco.x - 13, y + h - 42, 26, 42);
-        gfx.fillCircle(deco.x, y + h - 42, 13);
-        gfx.fillStyle(0xffd700, 1);
-        gfx.fillCircle(deco.x + 8, y + h - 22, 2.5);
-
-        // Letrero "El Aljibe"
-        const signW = 100, signH = 18;
-        gfx.fillStyle(0x8b3a00, 1);
-        gfx.fillRect(deco.x - signW / 2, y - 20, signW, signH);
-        gfx.lineStyle(2, 0xffd700, 1);
-        gfx.strokeRect(deco.x - signW / 2, y - 20, signW, signH);
-        this.scene.add.text(deco.x, y - 11, '🍺 EL ALJIBE', {
-            fontSize: '9px',
-            fontFamily: 'Arial Black, Arial',
-            color: '#ffd700',
-            stroke: '#4a1800',
-            strokeThickness: 2,
-        }).setOrigin(0.5, 0.5).setDepth(3);
-
-        // Mesitas afuera (izquierda)
-        gfx.fillStyle(0x8b5a2b, 1);
-        gfx.fillRect(x - 28, baseY - 12, 22, 3);
-        gfx.fillRect(x - 22, baseY - 12, 3, 12);
-        gfx.fillRect(x - 10, baseY - 12, 3, 12);
     }
 
     // ── Grúa Industrial de Construcción ──
     drawCrane(gfx, deco) {
         const baseY = this.getIslandY(deco.x);
-        const towerH = 160;
-        const armLen = 120;
-        const x = deco.x;
 
-        // Base de la grúa (patines)
-        gfx.fillStyle(0x555555, 1);
-        gfx.fillRect(x - 25, baseY - 8, 50, 8);
-        this.solidAreas.push({ x: x - 25, y: baseY - 8, w: 50, h: 8 });
+        if (this.scene.textures.exists('sprite_crane')) {
+            // Imagen real: 1449x892 px  →  queremos ~260px de alto
+            const DESIRED_H = 260;
+            const IMG_W = 1449;
+            const IMG_H = 892;
+            const sc = DESIRED_H / IMG_H; // ≈0.2915
+            const renderW = IMG_W * sc;   // ≈422
+            const renderH = DESIRED_H;    // 260
 
-        // Torre vertical (celosía amarilla)
-        gfx.fillStyle(0xf09000, 1);
-        gfx.fillRect(x - 7, baseY - towerH - 8, 14, towerH);
-        this.solidAreas.push({ x: x - 7, y: baseY - towerH - 8, w: 14, h: towerH });
+            // Anclar en la base de la torre (centro-horizontal de la torre es aprox 22% de la imagen)
+            const crane = this.scene.add.image(deco.x, baseY, 'sprite_crane');
+            const originX = 0.22;
+            crane.setOrigin(originX, 1);
+            crane.setScale(sc);
+            crane.setDepth(3);
 
-        // Refuerzos diagonales de la torre
-        gfx.lineStyle(2, 0xc07000, 0.8);
-        for (let i = 0; i < 5; i++) {
-            const dy = (towerH / 5) * i;
-            gfx.lineBetween(x - 7, baseY - 8 - dy, x + 7, baseY - 8 - dy - towerH / 5);
-            gfx.lineBetween(x + 7, baseY - 8 - dy, x - 7, baseY - 8 - dy - towerH / 5);
+            // Colisión: torre vertical
+            const towerW = renderW * 0.12; // Ancho preciso de la torre (90/1449)
+            const towerH = renderH * 0.81; // Alto de la torre desde el suelo hasta el brazo (78.7%)
+            this.scene.matter.add.rectangle(deco.x, baseY - towerH / 2, towerW, towerH, {
+                isStatic: true, label: 'decoration'
+            });
+            
+            // Base de la grúa
+            const baseW = renderW * 0.24;
+            const baseH = renderH * 0.12;
+            this.scene.matter.add.rectangle(deco.x, baseY - baseH / 2, baseW, baseH, {
+                isStatic: true, label: 'decoration'
+            });
+            
+            // Brazo de la grúa (arm) a lo largo del plano del brazo (a 21.3% desde arriba)
+            const armW = renderW * 0.95;
+            const armH = renderH * 0.12;
+            const armX = deco.x + (0.5 - originX) * renderW; // El centro del brazo es el centro de la imagen (50%), origen es 25%
+            const armY = baseY - renderH * 0.81; // El centro Y del brazo
+            this.scene.matter.add.rectangle(armX, armY, armW, armH, {
+                isStatic: true, label: 'decoration'
+            });
+
+            // Registrar en solidAreas para isPointSolid
+            this.solidAreas.push({ x: deco.x - towerW / 2, y: baseY - towerH, w: towerW, h: towerH });
+            this.solidAreas.push({ x: deco.x - baseW / 2, y: baseY - baseH, w: baseW, h: baseH });
+            this.solidAreas.push({ x: armX - armW / 2, y: armY - armH / 2, w: armW, h: armH });
+        } else {
+            const towerH = 160;
+            const x = deco.x;
+            gfx.fillStyle(0x555555, 1);
+            gfx.fillRect(x - 25, baseY - 8, 50, 8);
+            gfx.fillStyle(0xf09000, 1);
+            gfx.fillRect(x - 7, baseY - towerH - 8, 14, towerH);
+            gfx.fillStyle(0xf09000, 1);
+            gfx.fillRect(x - 10, baseY - towerH - 8 - 26, 130, 9);
+
+            this.scene.matter.add.rectangle(x, baseY - towerH / 2, 20, towerH, {
+                isStatic: true, label: 'decoration'
+            });
+
+            this.solidAreas.push({ x: x - 10, y: baseY - towerH, w: 20, h: towerH });
         }
-
-        // Cabina de operación
-        gfx.fillStyle(0xf09000, 1);
-        gfx.fillRect(x - 14, baseY - towerH - 8 - 20, 28, 20);
-        gfx.fillStyle(0x66aadd, 0.6);
-        gfx.fillRect(x - 10, baseY - towerH - 8 - 17, 10, 12);
-
-        // Brazo horizontal (pluma)
-        gfx.fillStyle(0xf09000, 1);
-        gfx.fillRect(x - 10, baseY - towerH - 8 - 26, armLen + 10, 9);
-
-        // Contrapeso
-        gfx.fillStyle(0x888888, 1);
-        gfx.fillRect(x - 45, baseY - towerH - 8 - 25, 32, 15);
-
-        // Cable de la pluma
-        gfx.lineStyle(2, 0x555555, 1);
-        gfx.lineBetween(x + armLen - 5, baseY - towerH - 8 - 22, x + armLen - 5, baseY - towerH + 30);
-
-        // Gancho
-        gfx.lineStyle(2.5, 0xaaaaaa, 1);
-        gfx.lineBetween(x + armLen - 5, baseY - towerH + 30, x + armLen + 3, baseY - towerH + 38);
-        gfx.fillStyle(0xaaaaaa, 1);
-        gfx.fillRect(x + armLen - 8, baseY - towerH + 28, 6, 12);
-
-        // Letrero en la cabina
-        this.scene.add.text(x, baseY - towerH - 8 - 38, '🏗️', {
-            fontSize: '12px',
-        }).setOrigin(0.5, 0.5).setDepth(3);
     }
 
     // ── Bote pesquero (flota en el agua) ──
@@ -992,51 +1024,75 @@ export class TerrainManager {
      */
     drawPalm(gfx, deco) {
         const baseY = this.getIslandY(deco.x);
-        const size  = deco.size || 80;
+        const size  = (deco.size || 80) * 2.5; // Aumentar tamaño para hacerlo más proporcional e imponente
 
         if (this.scene.textures.exists('sprite_palm')) {
             // ── Sprite PNG generado con IA ──
-            // Se añade directamente a la escena (no al gfx/RT) para máxima calidad.
             const palm = this.scene.add.image(deco.x, baseY, 'sprite_palm');
-            palm.setOrigin(0.5, 1);          // Anclar base del tronco a la superficie
-            palm.setScale(size / 200);       // 200 es la altura de diseño del sprite
+            palm.setOrigin(0.5, 1);
+            // La escala debe ser tal que el alto visual en juego sea igual a 'size'.
+            // La imagen real mide 774x809 px.
+            const sc = size / 809;
+            palm.setScale(sc);
             palm.setDepth(2);
 
-            // Registrar área sólida del tronco (para físicas)
-            const trunkW = 12;
+            // Colisión física del tronco mediante cuerpo Matter.js estático
+            // El tronco en la imagen real de la palmera mide aproximadamente el 16% del ancho.
+            // Y su altura física (tronco sólido) es aproximadamente el 75% del alto total.
+            const renderW = 774 * sc;
+            const renderH = size;
+            const trunkW = renderW * 0.12; // ancho proporcional del tronco
+            const trunkH = renderH * 0.82; // altura proporcional del tronco
+            const trunkY = baseY - trunkH / 2;
+
+            this.scene.matter.add.rectangle(deco.x, trunkY, trunkW, trunkH, {
+                isStatic: true,
+                friction: 0.9,
+                label: 'tree',
+            });
+            // También registrar en solidAreas para isPointSolid
             this.solidAreas.push({
                 x: deco.x - trunkW / 2,
-                y: baseY - size,
+                y: baseY - trunkH,
                 w: trunkW,
-                h: size,
+                h: trunkH,
             });
         } else {
             // ── Fallback: Palmera vectorial procedimental ──
-            const trunkWidth = 8;
-            gfx.fillStyle(0x8B4513, 1);
+            const trunkWidth = 8 * 1.7;
+            gfx.fillStyle(0x8b4513, 1);
             const segments = 8;
             for (let i = 0; i < segments; i++) {
                 const t    = i / segments;
-                const segX = deco.x + Math.sin(t * 1.2) * 12;
+                const segX = deco.x + Math.sin(t * 1.2) * 12 * 1.7;
                 const segY = baseY - t * size;
                 gfx.fillRect(segX - trunkWidth / 2, segY - size / segments, trunkWidth, size / segments + 2);
             }
-            this.solidAreas.push({ x: deco.x - trunkWidth / 2, y: baseY - size, w: trunkWidth, h: size });
 
-            const topX = deco.x + Math.sin(1.2) * 12;
+            // Cuerpo físico del tronco
+            const trunkH = size * 0.75;
+            const trunkY = baseY - trunkH / 2;
+            this.scene.matter.add.rectangle(deco.x, trunkY, trunkWidth, trunkH, {
+                isStatic: true,
+                friction: 0.9,
+                label: 'tree',
+            });
+            this.solidAreas.push({ x: deco.x - trunkWidth / 2, y: baseY - trunkH, w: trunkWidth, h: trunkH });
+
+            const topX = deco.x + Math.sin(1.2) * 12 * 1.7;
             const topY = baseY - size;
-            gfx.fillStyle(0x228B22, 1);
+            gfx.fillStyle(0x228b22, 1);
             const leafAngles = [-2.5, -1.8, -1.0, -0.3, 0.3, 1.0, 1.8, 2.5];
             leafAngles.forEach(angle => {
-                const leafLen = 30 + Math.random() * 15;
+                const leafLen = (30 + Math.random() * 15) * 1.7;
                 const endX = topX + Math.cos(angle) * leafLen;
                 const endY = topY + Math.sin(angle) * leafLen * 0.6;
-                gfx.lineStyle(5, 0x228B22, 1);
+                gfx.lineStyle(5 * 1.7, 0x228b22, 1);
                 gfx.lineBetween(topX, topY, endX, endY);
-                gfx.fillCircle(endX, endY, 8);
+                gfx.fillCircle(endX, endY, 8 * 1.7);
             });
             gfx.fillStyle(0x2ecc40, 1);
-            gfx.fillCircle(topX, topY, 12);
+            gfx.fillCircle(topX, topY, 12 * 1.7);
         }
     }
 
@@ -1317,6 +1373,56 @@ export class TerrainManager {
                 this.scene.matter.world.remove(blockData.body);
                 this.terrainBlocks.splice(i, 1);
             }
+        }
+    }
+
+    update(time, delta) {
+        // --- 1. CAPA DE AGUA ANIMADA CON ONDAS (Santa Cruz / El Alto) ---
+        if (this.waterGfx && this.mapConfig.hasWater) {
+            this.waterGfx.clear();
+            
+            const timeSec = time / 1000;
+            const wColor = this.mapConfig.waterColor;
+
+            // Extraer componentes RGB del color entero y oscurecer/aclarar manualmente
+            // (evita Phaser.Display.Color.Darken que no existe en Phaser 3)
+            const r0 = (wColor >> 16) & 0xff;
+            const g0 = (wColor >> 8)  & 0xff;
+            const b0 =  wColor        & 0xff;
+
+            // Capa 1: Olas del Fondo (más oscuras)
+            const dr = Math.max(0, r0 - 30);
+            const dg = Math.max(0, g0 - 30);
+            const db = Math.max(0, b0 - 30);
+            const darkerColor = (dr << 16) | (dg << 8) | db;
+
+            this.waterGfx.fillStyle(darkerColor, 0.65);
+            this.waterGfx.beginPath();
+            this.waterGfx.moveTo(0, this.height);
+            for (let x = 0; x <= this.width; x += 25) {
+                const waveY = this.waterLevel + 12 + Math.sin(x * 0.0035 + timeSec * 1.1) * 8 + Math.cos(x * 0.009 + timeSec * 0.5) * 4;
+                this.waterGfx.lineTo(x, waveY);
+            }
+            this.waterGfx.lineTo(this.width, this.height);
+            this.waterGfx.closePath();
+            this.waterGfx.fillPath();
+            
+            // Capa 2: Olas del Frente (más claras)
+            const lr = Math.min(255, r0 + 45);
+            const lg = Math.min(255, g0 + 45);
+            const lb = Math.min(255, b0 + 45);
+            const lighterColor = (lr << 16) | (lg << 8) | lb;
+
+            this.waterGfx.fillStyle(lighterColor, 0.82);
+            this.waterGfx.beginPath();
+            this.waterGfx.moveTo(0, this.height);
+            for (let x = 0; x <= this.width; x += 15) {
+                const waveY = this.waterLevel + Math.sin(x * 0.0068 - timeSec * 1.9) * 5 + Math.sin(x * 0.016 + timeSec * 0.9) * 3;
+                this.waterGfx.lineTo(x, waveY);
+            }
+            this.waterGfx.lineTo(this.width, this.height);
+            this.waterGfx.closePath();
+            this.waterGfx.fillPath();
         }
     }
 }
