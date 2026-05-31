@@ -1,0 +1,119 @@
+/* Menu Principal */
+
+#menu-view.active {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(5, 8, 18, 0.9) 0%, rgba(26, 15, 63, 0.9) 100%);
+    background-image: 
+        radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(255, 107, 0, 0.1) 0%, transparent 50%);
+    gap: 40px;
+}
+
+.menu-container {
+    text-align: center;
+    animation: fadeInDown 0.8s ease;
+}
+
+.menu-title {
+    font-size: 64px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    background: linear-gradient(to right, #00d4ff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
+    margin-bottom: 25px;
+    filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.5));
+}
+
+.menu-subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 45px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 320px;
+    animation: fadeInUp 0.8s ease 0.2s both;
+}
+
+.menu-btn {
+    padding: 16px 40px;
+    font-size: 18px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--primary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(5px);
+}
+
+.menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.menu-btn:hover {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 255, 136, 0.2) 100%);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.4), inset 0 0 8px rgba(255, 255, 255, 0.1);
+    transform: translateY(-4px);
+}
+
+.menu-btn:hover::before {
+    left: 100%;
+}
+
+.menu-footer {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* Animaciones */
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

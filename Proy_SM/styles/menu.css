@@ -1,0 +1,146 @@
+/* Menu Principal - Estilo Táctico HUD */
+#menu-view {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--darker-bg);
+    /* Patrón de cuadrícula táctica */
+    background-image: 
+        linear-gradient(rgba(0, 212, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-position: center center;
+    isolation: isolate;
+}
+
+#menu-view::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at center, transparent 0%, rgba(5, 8, 18, 0.95) 100%);
+    z-index: -1;
+}
+
+.menu-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 50px;
+    animation: fadeInDown 0.8s ease;
+}
+
+.menu-header {
+    text-align: center;
+}
+
+.menu-title {
+    font-size: 64px;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-family: monospace;
+}
+
+.title-bold { font-weight: 900; color: var(--text-primary); }
+.title-light { font-weight: 300; color: var(--primary); }
+.title-version { 
+    font-size: 20px; 
+    font-weight: bold; 
+    background: var(--primary); 
+    color: #000; 
+    padding: 3px 8px; 
+    border-radius: 4px;
+    margin-left: 10px;
+}
+
+.menu-subtitle {
+    font-size: 14px;
+    color: var(--primary);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+    opacity: 0.9;
+    border-top: 1px solid rgba(0, 212, 255, 0.3);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+    padding: 10px 0;
+    display: inline-block;
+}
+
+/* Opciones Tácticas */
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 350px;
+    animation: fadeInUp 0.8s ease 0.2s both;
+}
+
+.menu-btn {
+    background: rgba(10, 14, 39, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-left: 4px solid var(--primary);
+    color: var(--text-primary);
+    padding: 18px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: left;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.menu-btn::after {
+    content: '';
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%) rotate(45deg);
+    width: 10px;
+    height: 10px;
+    border-top: 2px solid rgba(0, 212, 255, 0.5);
+    border-right: 2px solid rgba(0, 212, 255, 0.5);
+    transition: all 0.2s ease;
+}
+
+.menu-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: var(--primary);
+    padding-left: 32px;
+    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.1);
+}
+
+.menu-btn:hover::after {
+    border-color: var(--primary);
+    right: 15px;
+}
+
+.menu-footer {
+    position: absolute;
+    bottom: 25px;
+    left: 25px;
+    font-size: 12px;
+    color: var(--primary);
+    opacity: 0.5;
+    letter-spacing: 1.5px;
+    font-family: monospace;
+}
+
+/* Animaciones */
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}

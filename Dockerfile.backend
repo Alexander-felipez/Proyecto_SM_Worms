@@ -1,0 +1,20 @@
+# Usar imagen ligera de Node
+FROM node:20-alpine
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar configuración
+COPY package*.json ./
+
+# Instalar dependencias
+RUN npm install
+
+# Copiar el backend
+COPY server/ ./server/
+
+# Puerto del servidor Socket.io
+EXPOSE 3001
+
+# Comando para ejecutar el servidor
+CMD ["node", "server/server.js"]

@@ -1,0 +1,425 @@
+import Phaser from 'phaser';
+import { TerrainManager } from '../systems/TerrainManager';
+import { TurnManager } from '../systems/TurnManager';
+import { Player } from '../entities/Player';
+import { Projectile } from '../entities/Projectile';
+import { AimingSystem } from '../systems/AimingSystem';
+import { GAME_CONFIG } from '../config/GameConfig';
+import { getMapConfig } from '../config/MapConfig';
+
+/**
+ * GameScene
+ * Escena principal del juego. Maneja terreno, jugadores, turnos,
+ * disparos, cámara, y sincronización de red.
+ */
+export class GameScene extends Phaser.Scene {
+    constructor() {
+        super('GameScene');
+    }
+
+    init(data) {
+        this.socket = data.socket || null;
+        this.isHost = data.isHost || false;
+        
+        // Si no hay red (Modo Entrenamiento), creamos 2 jugadores locales
+        const selectedMap = this.registry.get('selectedMap') || 'el_alto';
+        
+        if (data.room) {
+            this.room = data.room;
+        } else {
+            // Modo entrenamiento local: 2 jugadores dummy
+            this.room = {
+                players: [
+                    { id: 'local_1', name: 'Jugador 1', team: 'RED' },
+                    { id: 'local_2', name: 'Jugador 2', team: 'BLUE' },
+                ],
+                map: selectedMap,
+                timeOfDay: 'dia',
+            };
+        }
+        this.myId = data.myId || 'local_1';
+        
+        this.playersLookup = {};     // Diccionario para almacenar Player entities por ID
+        this.turnManager = null;
+        this.syncTimer = 0;          // FIX: inicializar syncTimer
+        this.currentPlayerIndex = 0; // Para control local en modo entrenamiento
+        this._lastPhysAngle = null;  // Cache para throttle del panel de físicas
+    }
+
+    create() {
+        this.scene.launch('UIScene');
+        
+        // --- CONFIGURACIÓN DEL MAPA DESDE MapConfig ---
+        const mapKey = this.room.map || 'el_alto';
+        this.mapConfig = getMapConfig(mapKey);
+        
+        // Aplicar cielo y gravedad desde el mapa
+        this.cameras.main.setBackgroundColor(this.mapConfig.skyColor);
+        this.matter.world.setGravity(0, this.mapConfig.gravity);
+        this.matter.world.setBounds(0, 0, GAME_CONFIG.MAP.DEFAULT_WIDTH, GAME_CONFIG.MAP.DEFAULT_HEIGHT, 100, true, true, false, true);
+        
+        // Almacenar hasWater para que Player pueda adaptar su muerte
+        this.hasWater = this.mapConfig.hasWater;
+
+        // Instanciar y crear terreno destructible
+        this.terrainManager = new TerrainManager(this);
+        this.terrainManager.createTerrain();
+
+        // --- SISTEMA DE APUNTADO ---
+        this.aimingSystem = new AimingSystem(this);
+
+        // --- CREAR MÚLTIPLES PERSONAJES ---
+        const allPlayers = [];
+        const totalPlayers = this.room.players.length;
+
+        // ── Zonas de spawn por mapa ──
+        // SANTA_CRUZ: acantilado izquierdo, acantilado derecho, meseta central
+        const biome = this.mapConfig.biome || '';
+        const spawnZones = {
+            SANTA_CRUZ: [
+                { xMin: 250, xMax: 680 },    // Acantilado izquierdo
+                { xMin: 2400, xMax: 2900 },   // Acantilado derecho
+                { xMin: 1300, xMax: 1900 },   // Meseta central
+            ],
+        };
+        const zones = spawnZones[biome] || null;
+
+        this.room.players.forEach((pData, index) => {
+            let isLocal;
+            
+            if (this.socket) {
+                // Modo multijugador: solo TU jugador es local
+                isLocal = (pData.id === this.myId);
+            } else {
+                // Modo entrenamiento local: todos son "locales" (controlados por turnos)
+                isLocal = true;
+            }
+
+            // Calcular posición de spawn: por zonas o equidistante
+            let spawnX;
+            if (zones) {
+                const zone = zones[index % zones.length];
+                spawnX = Phaser.Math.Between(zone.xMin, zone.xMax);
+            } else {
+                const spawnSpacing = (GAME_CONFIG.MAP.DEFAULT_WIDTH - 400) / (totalPlayers + 1);
+                spawnX = 200 + spawnSpacing * (index + 1);
+            }
+            const spawnPos = this.terrainManager.getSafeSpawnPosition(spawnX);
+            
+            let teamKey = pData.team || (index === 0 ? 'RED' : 'BLUE');
+            let playerEntity = new Player(this, spawnPos.x, spawnPos.y, pData.id, pData.name, isLocal, this.isHost || !this.socket, teamKey);
+            
+            this.playersLookup[pData.id] = playerEntity;
+            allPlayers.push(playerEntity);
+
+            // Identificar MI jugador principal para la cámara (primer jugador en modo local)
+            if (index === 0 && !this.socket) {
+                this.myPlayer = playerEntity;
+            } else if (pData.id === this.myId) {
+                this.myPlayer = playerEntity;
+            }
+        });
+        
+        // Fallback por seguridad
+        if (!this.myPlayer) this.myPlayer = Object.values(this.playersLookup)[0];
+
+        // --- SISTEMA DE TURNOS ---
+        this.turnManager = new TurnManager(this, this.isHost || !this.socket);
+        this.turnManager.setPlayers(allPlayers);
+
+        // Escuchar eventos del TurnManager
+        this.turnManager.on('turnStarted', (data) => {
+            const currentPlayer = data.player;
+            if (currentPlayer) {
+                // Empezar el turno sin arma equipada — el jugador elige con 1/2/3/4
+                this.currentWeaponKey = 'NONE';
+                this.events.emit('weaponChanged', {
+                    weaponKey: 'NONE',
+                    ammo: null
+                });
+
+                // 🎥 Cámara: seguir suavemente al jugador activo
+                this.cameras.main.startFollow(currentPlayer.sprite, true, 0.08, 0.08);
+            }
+            // Propagar a UIScene
+            this.scene.get('UIScene').events.emit('turnStarted', data);
+        });
+
+        this.turnManager.on('turnEnded', (data) => {
+            this.aimingSystem.hide();
+            this.scene.get('UIScene').events.emit('turnEnded', data);
+        });
+
+        this.turnManager.on('turnTimeTick', (timeRemaining) => {
+            this.scene.get('UIScene').events.emit('turnTimeTick', timeRemaining);
+        });
+
+        this.turnManager.on('gameOver', (data) => {
+            // Recopilar estadísticas de todos los jugadores
+            const stats = {};
+            for (let id in this.playersLookup) {
+                const p = this.playersLookup[id];
+                stats[id] = {
+                    name: p.name,
+                    kills: p.stats.kills,
+                    damageDealt: Math.round(p.stats.damageDealt),
+                    damageTaken: Math.round(p.stats.damageTaken),
+                };
+            }
+
+            // Esperar un momento antes de ir al Game Over
+            this.time.delayedCall(2000, () => {
+                this.scene.stop('UIScene');
+                this.scene.start('GameOverScene', {
+                    winnerName: data.winnerName,
+                    winnerTeam: data.winnerTeam,
+                    stats: stats,
+                });
+            });
+        });
+
+        // Escuchar muerte de jugadores
+        this.events.on('playerDied', (deadPlayer) => {
+            this.turnManager.onPlayerDied(deadPlayer);
+        });
+
+        // Escuchar explosiones (para auto-end turn después de disparar)
+        this.events.on('explosionOccurred', () => {
+            this.turnManager.onPlayerFired();
+        });
+
+        // Controles de entrada básicos
+        this.cursors = this.input.keyboard.createCursorKeys();
+        
+        // Cambiar de arma (tecla Q — ciclo)
+        this.input.keyboard.on('keydown-Q', () => {
+            this.cycleWeapon();
+        });
+
+        // Teclas numéricas de selección directa
+        this.input.keyboard.on('keydown-ONE',   () => this.setWeapon('NONE'));
+        this.input.keyboard.on('keydown-TWO',   () => this.setWeapon('BAZOOKA'));
+        this.input.keyboard.on('keydown-THREE', () => this.setWeapon('GRENADE'));
+        this.input.keyboard.on('keydown-FOUR',  () => this.setWeapon('DYNAMITE'));
+
+        // Registrar evento de clic en el HUD para cambiar arma
+        this.events.on('hudWeaponClicked', (weaponKey) => {
+            this.setWeapon(weaponKey);
+        });
+        
+        // Mouse click para disparar
+        this.input.on('pointerdown', (pointer) => {
+            this.fireProjectile(pointer);
+        });
+        
+        // Si somos clientes, recibir y actualizar estado del host
+        if (this.socket && !this.isHost) {
+            this.socket.on('stateUpdate', (state) => {
+                this.updateFromHost(state);
+            });
+        }
+        
+        // 🎥 CONFIGURAR CÁMARA SEGUIDORA
+        // Limitar la cámara al mundo del juego (no puede salirse del mapa)
+        this.cameras.main.setBounds(0, 0, GAME_CONFIG.MAP.DEFAULT_WIDTH, GAME_CONFIG.MAP.DEFAULT_HEIGHT);
+
+        // Zoom panorámico inicial para mapas grandes (SANTA_CRUZ)
+        if (this.mapConfig.biome === 'SANTA_CRUZ') {
+            // Vista panorámica al inicio para apreciar el cañón
+            this.cameras.main.setZoom(0.55);
+            this.cameras.main.centerOn(GAME_CONFIG.MAP.DEFAULT_WIDTH / 2, GAME_CONFIG.MAP.DEFAULT_HEIGHT * 0.55);
+
+            // Zona muerta ampliada: la cámara no sigue micro-movimientos
+            this.cameras.main.setDeadzone(120, 80);
+
+            // Tras 2.5 s, hacer zoom in suave hacia el jugador activo
+            this.time.delayedCall(2500, () => {
+                this.tweens.add({
+                    targets: this.cameras.main,
+                    zoom: 0.85,
+                    duration: 1200,
+                    ease: 'Sine.easeInOut',
+                    onComplete: () => {
+                        if (this.myPlayer) {
+                            this.cameras.main.startFollow(this.myPlayer.sprite, true, 0.07, 0.07);
+                        }
+                    }
+                });
+            });
+        } else {
+            // Comportamiento original para otros mapas
+            if (this.myPlayer) {
+                this.cameras.main.startFollow(this.myPlayer.sprite, true, 0.08, 0.08);
+            }
+        }
+
+        // ¡Comenzar el juego de turnos!
+        this.time.delayedCall(1000, () => {
+            this.turnManager.startGame();
+        });
+    }
+
+    fireProjectile(pointer) {
+        // Solo el Host o el modo local puede disparar
+        if (this.socket && !this.isHost) return;
+
+        // Sin arma equipada: ignorar el clic
+        if (!this.currentWeaponKey || this.currentWeaponKey === 'NONE') return;
+        
+        // Verificar que es el turno del jugador y que puede disparar
+        const currentPlayer = this.turnManager.getCurrentPlayer();
+        if (!currentPlayer) return;
+        if (!this.turnManager.canFire()) return;
+
+        // Verificar munición
+        if (!currentPlayer.hasAmmo(this.currentWeaponKey)) {
+            this.scene.get('UIScene').showAction('¡Sin munición para esta arma!');
+            return;
+        }
+
+        const shooter = currentPlayer;
+
+        // Descontar munición
+        shooter.deductAmmo(this.currentWeaponKey);
+
+        // Notificar a la UI
+        this.events.emit('weaponChanged', {
+            weaponKey: this.currentWeaponKey,
+            ammo: shooter.ammo[this.currentWeaponKey]
+        });
+
+        // Crear proyectil con el arma seleccionada
+        new Projectile(this, shooter.sprite.x, shooter.sprite.y, pointer.worldX, pointer.worldY, shooter, this.currentWeaponKey);
+
+        // Ocultar el sistema de apuntado al disparar
+        this.aimingSystem.hide();
+    }
+    
+    syncStateToClients() {
+        if (!this.socket || !this.isHost) return;
+        
+        // Empaquetar posiciones de TODOS
+        const playersState = {};
+        for (let id in this.playersLookup) {
+            let pEntity = this.playersLookup[id];
+            playersState[id] = { 
+                x: pEntity.sprite.x, 
+                y: pEntity.sprite.y,
+                hp: pEntity.hp,
+                alive: pEntity.alive,
+            };
+        }
+        
+        const gameState = {
+            players: playersState,
+            turn: this.turnManager.getTurnState(),
+        };
+        
+        this.socket.emit('syncState', gameState);
+    }
+    
+    updateFromHost(state) {
+        if (!state.players) return;
+        
+        // Actualizar posiciones y HP desde el host
+        for (let id in state.players) {
+            let pData = state.players[id];
+            let pEntity = this.playersLookup[id];
+            if (pEntity) {
+                pEntity.setPosition(pData.x, pData.y);
+                // Sincronizar HP si cambió
+                if (pData.hp !== undefined && pData.hp !== pEntity.hp) {
+                    pEntity.hp = pData.hp;
+                    pEntity.updateHpBar();
+                }
+            }
+        }
+
+        // Sincronizar turnos
+        if (state.turn) {
+            this.turnManager.syncFromHost(state.turn);
+        }
+    }
+
+    update(time, delta) {
+        if (this.turnManager.isGameOver) return;
+
+        // Update del TurnManager (countdown, etc.)
+        this.turnManager.update(delta);
+
+        // Update de jugadores: solo el jugador activo puede moverse
+        Object.values(this.playersLookup).forEach(playerEntity => {
+            const canAct = this.turnManager.canPlayerAct(playerEntity.id);
+            playerEntity.update(this.cursors, canAct);
+        });
+
+        // --- SISTEMA DE APUNTADO + PANEL DE FÍSICAS ---
+        // Solo BAZOOKA y GRENADE tienen trayectoria predictiva.
+        // NONE y DYNAMITE ocultan la mira inmediatamente.
+        const aimWeapons  = ['BAZOOKA', 'GRENADE'];
+        const weaponReady = aimWeapons.includes(this.currentWeaponKey);
+        const canShowAim  = weaponReady && this.turnManager.canFire() && (!this.socket || this.isHost);
+
+        if (canShowAim) {
+            const currentPlayer = this.turnManager.getCurrentPlayer();
+            if (currentPlayer && currentPlayer.alive) {
+                const wind = this.turnManager.windSpeed || 0;
+                const physData = this.aimingSystem.update(
+                    currentPlayer.sprite,
+                    this.input.activePointer,
+                    this.currentWeaponKey,
+                    wind
+                );
+
+                // Enviar datos al panel de físicas solo cuando el ángulo cambia (throttle)
+                if (physData && physData.angle !== this._lastPhysAngle) {
+                    this._lastPhysAngle = physData.angle;
+                    this.scene.get('UIScene').events.emit('updatePhysicsInfo', physData);
+                }
+            }
+        } else {
+            this.aimingSystem.hide();
+            // Panel de físicas a guiones cuando no se apunta
+            if (this._lastPhysAngle !== null) {
+                this._lastPhysAngle = null;
+                this.scene.get('UIScene').events.emit('updatePhysicsInfo', { active: false });
+            }
+        }
+
+        // Sync de red (solo host, cada N frames)
+        if (this.isHost && this.socket) {
+            this.syncTimer++;
+            if (this.syncTimer >= GAME_CONFIG.NETWORK.SYNC_RATE) { 
+                this.syncStateToClients();
+                this.syncTimer = 0;
+            }
+        }
+    }
+
+    cycleWeapon() {
+        const weapons = ['BAZOOKA', 'GRENADE', 'DYNAMITE'];
+        const currentIndex = weapons.indexOf(this.currentWeaponKey);
+        const nextIndex = (currentIndex + 1) % weapons.length;
+        this.setWeapon(weapons[nextIndex]);
+    }
+
+    setWeapon(weaponKey) {
+        const currentPlayer = this.turnManager.getCurrentPlayer();
+        if (!currentPlayer) return;
+        
+        // Si hay socket (multijugador), solo permitir si eres tú
+        if (this.socket && currentPlayer.id !== this.myId) return;
+
+        this.currentWeaponKey = weaponKey;
+
+        // Limpiar mira de inmediato si el arma nueva no la necesita
+        if (weaponKey === 'NONE' || weaponKey === 'DYNAMITE') {
+            this.aimingSystem.hide();
+        }
+
+        this.events.emit('weaponChanged', {
+            weaponKey: weaponKey,
+            ammo: currentPlayer.ammo[weaponKey]
+        });
+    }
+}
