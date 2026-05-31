@@ -4,8 +4,10 @@ import { TurnManager } from '../systems/TurnManager';
 import { Player } from '../entities/Player';
 import { Projectile } from '../entities/Projectile';
 import { AimingSystem } from '../systems/AimingSystem';
+import { ChargeSystem } from '../systems/ChargeSystem';
 import { GAME_CONFIG } from '../config/GameConfig';
 import { getMapConfig } from '../config/MapConfig';
+import { calcLaunchVelocityFromPower } from '../config/LaunchConfig';
 
 /**
  * GameScene
@@ -41,9 +43,10 @@ export class GameScene extends Phaser.Scene {
         
         this.playersLookup = {};     // Diccionario para almacenar Player entities por ID
         this.turnManager = null;
-        this.syncTimer = 0;          // FIX: inicializar syncTimer
-        this.currentPlayerIndex = 0; // Para control local en modo entrenamiento
-        this._lastPhysAngle = null;  // Cache para throttle del panel de físicas
+        this.syncTimer = 0;
+        this.currentPlayerIndex = 0;
+        this._lastPhysAngle = null;
+        this.chargeSystem = null;    // Sistema de carga con Espacio
     }
 
     create() {
@@ -67,6 +70,12 @@ export class GameScene extends Phaser.Scene {
 
         // --- SISTEMA DE APUNTADO ---
         this.aimingSystem = new AimingSystem(this);
+
+        // --- SISTEMA DE CARGA (Espacio) ---
+        this.chargeSystem = new ChargeSystem(this);
+        this.events.on('chargeReleased', ({ power, angle }) => {
+            this._fireWithCharge(power, angle);
+        });
 
         // --- CREAR MÚLTIPLES PERSONAJES ---
         const allPlayers = [];
@@ -131,22 +140,23 @@ export class GameScene extends Phaser.Scene {
         this.turnManager.on('turnStarted', (data) => {
             const currentPlayer = data.player;
             if (currentPlayer) {
-                // Empezar el turno sin arma equipada — el jugador elige con 1/2/3/4
                 this.currentWeaponKey = 'NONE';
-                this.events.emit('weaponChanged', {
-                    weaponKey: 'NONE',
-                    ammo: null
-                });
-
-                // 🎥 Cámara: seguir suavemente al jugador activo
+                this.events.emit('weaponChanged', { weaponKey: 'NONE', ammo: null });
                 this.cameras.main.startFollow(currentPlayer.sprite, true, 0.08, 0.08);
             }
-            // Propagar a UIScene
+            // Resetear bloqueo post-disparo para todos los jugadores
+            Object.values(this.playersLookup).forEach(p => { p.hasFired = false; });
+
+            if (!this.socket || this.isHost) {
+                this.chargeSystem.enable();
+            }
             this.scene.get('UIScene').events.emit('turnStarted', data);
         });
 
         this.turnManager.on('turnEnded', (data) => {
             this.aimingSystem.hide();
+            this.chargeSystem.disable();
+            this.scene.get('UIScene').events.emit('chargeUpdate', 0);
             this.scene.get('UIScene').events.emit('turnEnded', data);
         });
 
@@ -291,6 +301,9 @@ export class GameScene extends Phaser.Scene {
         // Crear proyectil con el arma seleccionada
         new Projectile(this, shooter.sprite.x, shooter.sprite.y, pointer.worldX, pointer.worldY, shooter, this.currentWeaponKey);
 
+        // Bloquear movimiento del jugador hasta el próximo turno
+        shooter.hasFired = true;
+
         // Ocultar el sistema de apuntado al disparar
         this.aimingSystem.hide();
     }
@@ -354,8 +367,6 @@ export class GameScene extends Phaser.Scene {
         });
 
         // --- SISTEMA DE APUNTADO + PANEL DE FÍSICAS ---
-        // Solo BAZOOKA y GRENADE tienen trayectoria predictiva.
-        // NONE y DYNAMITE ocultan la mira inmediatamente.
         const aimWeapons  = ['BAZOOKA', 'GRENADE'];
         const weaponReady = aimWeapons.includes(this.currentWeaponKey);
         const canShowAim  = weaponReady && this.turnManager.canFire() && (!this.socket || this.isHost);
@@ -370,8 +381,6 @@ export class GameScene extends Phaser.Scene {
                     this.currentWeaponKey,
                     wind
                 );
-
-                // Enviar datos al panel de físicas solo cuando el ángulo cambia (throttle)
                 if (physData && physData.angle !== this._lastPhysAngle) {
                     this._lastPhysAngle = physData.angle;
                     this.scene.get('UIScene').events.emit('updatePhysicsInfo', physData);
@@ -379,11 +388,16 @@ export class GameScene extends Phaser.Scene {
             }
         } else {
             this.aimingSystem.hide();
-            // Panel de físicas a guiones cuando no se apunta
             if (this._lastPhysAngle !== null) {
                 this._lastPhysAngle = null;
                 this.scene.get('UIScene').events.emit('updatePhysicsInfo', { active: false });
             }
+        }
+
+        // --- SISTEMA DE CARGA ---
+        if (this.chargeSystem && this.currentWeaponKey !== 'NONE') {
+            const power = this.chargeSystem.update();
+            this.scene.get('UIScene').events.emit('chargeUpdate', power);
         }
 
         // Sync de red (solo host, cada N frames)
@@ -394,6 +408,48 @@ export class GameScene extends Phaser.Scene {
                 this.syncTimer = 0;
             }
         }
+    }
+
+    /**
+     * Disparo por carga (Espacio). Usa el ángulo del ratón + potencia acumulada.
+     */
+    _fireWithCharge(power, angle) {
+        if (!this.currentWeaponKey || this.currentWeaponKey === 'NONE') return;
+        if (!this.turnManager.canFire()) return;
+        if (this.socket && !this.isHost) return;
+
+        const shooter = this.turnManager.getCurrentPlayer();
+        if (!shooter || !shooter.alive) return;
+        if (!shooter.hasAmmo(this.currentWeaponKey)) {
+            this.scene.get('UIScene').showAction('¡Sin munición!');
+            return;
+        }
+
+        shooter.deductAmmo(this.currentWeaponKey);
+        this.events.emit('weaponChanged', {
+            weaponKey: this.currentWeaponKey,
+            ammo: shooter.ammo[this.currentWeaponKey],
+        });
+
+        // Calcular velocidad usando potencia manual en lugar de distancia de ratón
+        const launch = calcLaunchVelocityFromPower(angle, power, this.currentWeaponKey);
+
+        new Projectile(
+            this,
+            shooter.sprite.x, shooter.sprite.y,
+            shooter.sprite.x + Math.cos(angle) * 100,
+            shooter.sprite.y + Math.sin(angle) * 100,
+            shooter,
+            this.currentWeaponKey,
+            launch
+        );
+
+        // Bloquear movimiento del jugador hasta el próximo turno
+        shooter.hasFired = true;
+
+        this.aimingSystem.hide();
+        this.chargeSystem.reset();
+        this.scene.get('UIScene').events.emit('chargeUpdate', 0);
     }
 
     cycleWeapon() {

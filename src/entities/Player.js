@@ -45,13 +45,18 @@ export class Player {
         this.sprite = scene.matter.add.sprite(x, y, textureKey);
         this.sprite.setBody({
             type: 'rectangle', 
-            width: 24, // Adaptado al cuerpo del gusanito
+            width: 24,
             height: 32
         }, {
             restitution: 0.5, 
             friction: 0.15, 
             density: 0.05, 
-            label: `player_${id}`
+            label: `player_${id}`,
+            collisionFilter: {
+                group: -1,      // Grupo negativo: los jugadores nunca colisionan entre sí
+                category: 0x0002,
+                mask: 0x0001,   // Solo colisiona con categoría 0x0001 (terreno)
+            }
         });
 
         // Etiqueta de Nombre Dinámica
@@ -83,6 +88,11 @@ export class Player {
 
         // --- Control de salto (anti salto infinito) ---
         this.canJump = true;
+        // --- Bloqueo post-disparo ---
+        this.hasFired = false;
+
+        // Alta fricción estática para evitar resbalamiento en rampas
+        this.sprite.setFriction(0.9, 0.05);
         this._jumpCollisionListener = (event) => {
             if (!this.alive || !this.sprite.body) return;
             for (const pair of event.pairs) {
@@ -293,7 +303,8 @@ export class Player {
         const wasInAir = this._wasInAir || false;
 
         // Control de inputs (solo si es TU jugador, tienes permisos, Y es tu turno)
-        if (this.isLocal && canAct && (!this.scene.socket || this.isHost)) {
+        // hasFired bloquea movimiento desde el disparo hasta que el TurnManager cambie turno
+        if (this.isLocal && canAct && !this.hasFired && (!this.scene.socket || this.isHost)) {
             let walking = false;
             if (cursors.left.isDown) {
                 this.sprite.setVelocityX(-GAME_CONFIG.PLAYER.MOVE_SPEED);
@@ -380,11 +391,12 @@ export class Player {
             
             // Si el jugador cae al agua/vacío (debajo del mapa)
             if (this.sprite.y > GAME_CONFIG.PLAYER.FALL_DEATH_Y) {
-                // Muerte por caída — se adapta al bioma:
-                // Con agua: "¡Se ahogó!" | Sin agua (Luna): "¡Perdido en el espacio!"
                 this.deathCause = this.scene.hasWater === false ? 'void' : 'water';
-                this.takeDamage(this.hp); // Muerte instantánea
+                this.takeDamage(this.hp);
             }
+        } else if (this.hasFired) {
+            // Post-disparo: clavar al jugador en su sitio (no resbala en rampas)
+            this.sprite.setVelocityX(0);
         }
 
         // Guardar estado para el próximo frame

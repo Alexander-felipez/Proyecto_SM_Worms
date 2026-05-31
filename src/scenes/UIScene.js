@@ -93,6 +93,27 @@ export class UIScene extends Phaser.Scene {
             this.onPhysicsUpdate(data);
         });
 
+        // --- BARRA DE CARGA (Espacio) ---
+        // Se dibuja sobre el personaje activo; se oculta cuando power=0
+        this.chargeBarContainer = this.add.container(0, 0).setDepth(30).setVisible(false);
+
+        const barBg = this.add.rectangle(0, 0, 54, 10, 0x000000, 0.6).setOrigin(0.5);
+        this.chargeBarFill = this.add.rectangle(-27, 0, 0, 8, 0x00ff88, 1).setOrigin(0, 0.5);
+        this.chargeBarBorder = this.add.graphics();
+        this.chargeBarBorder.lineStyle(1.5, 0xffffff, 0.6);
+        this.chargeBarBorder.strokeRect(-27, -4, 54, 8);
+
+        this.chargeLabel = this.add.text(0, -14, 'CARGANDO...', {
+            fontSize: '9px', fontFamily: 'Chakra Petch, monospace',
+            color: '#ffffff', stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5, 1);
+
+        this.chargeBarContainer.add([barBg, this.chargeBarFill, this.chargeBarBorder, this.chargeLabel]);
+
+        this.events.on('chargeUpdate', (power) => {
+            this._updateChargeBar(power);
+        });
+
         // --- 3. PANEL DE ARSENAL (Glassmorphism) ---
         const camWidth = this.cameras.main.width;
         this.weaponPanelGfx = this.drawGlassPanel(camWidth - 280, 10, 270, 80, 0xffaa00);
@@ -439,6 +460,40 @@ export class UIScene extends Phaser.Scene {
     }
 
     /**
+     * Dibuja la barra de carga sobre el jugador activo.
+     * power: 0 → ocultar, 0-1 → mostrar con color verde→rojo
+     */
+    _updateChargeBar(power) {
+        if (!power || power <= 0) {
+            this.chargeBarContainer.setVisible(false);
+            return;
+        }
+
+        const gameScene = this.scene.get('GameScene');
+        const player = gameScene && gameScene.turnManager && gameScene.turnManager.getCurrentPlayer();
+        if (!player || !player.alive || !player.sprite) {
+            this.chargeBarContainer.setVisible(false);
+            return;
+        }
+
+        // Convertir posición del mundo a coordenadas de pantalla
+        const cam = gameScene.cameras.main;
+        const sx = (player.sprite.x - cam.scrollX) * cam.zoom;
+        const sy = (player.sprite.y - cam.scrollY) * cam.zoom - 55;
+
+        this.chargeBarContainer.setPosition(sx, sy).setVisible(true);
+
+        // Ancho de la barra (max 54px)
+        this.chargeBarFill.width = power * 54;
+
+        const color = power < 0.4 ? 0x00ff88 : power < 0.75 ? 0xffdd00 : 0xff4444;
+        this.chargeBarFill.fillColor = color;
+
+        this.chargeLabel.setText(`${Math.round(power * 100)}%`);
+        this.chargeLabel.setColor(power > 0.75 ? '#ff4444' : '#ffffff');
+    }
+
+    /**
      * Actualiza los datos de físicas en vivo.
      * Llamado desde GameScene vía evento 'updatePhysicsInfo'.
      * data: { angle, speed, vx, vy, wind, active }
@@ -472,3 +527,4 @@ export class UIScene extends Phaser.Scene {
         this.physWindText.setText(`Viento  :  ${kmh} km/h ${wDir}`).setColor('#5599bb');
     }
 }
+    

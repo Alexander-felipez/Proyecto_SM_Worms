@@ -7,7 +7,7 @@ import { calcLaunchVelocity } from '../config/LaunchConfig';
  * Maneja el disparo, vuelo, colisión y explosión con daño real.
  */
 export class Projectile {
-    constructor(scene, startX, startY, targetX, targetY, owner = null, weaponType = 'BAZOOKA') {
+    constructor(scene, startX, startY, targetX, targetY, owner = null, weaponType = 'BAZOOKA', precalcLaunch = null) {
         this.scene = scene;
         this.owner = owner; // Player que disparó
         this.hasExploded = false;
@@ -100,13 +100,12 @@ export class Projectile {
             });
         }
 
-        // ── VELOCIDAD INICIAL — mismo cerebro que AimingSystem ───────────────
-        // calcLaunchVelocity devuelve px/frame; setVelocity de Matter acepta px/frame.
-        // Así la bala real sigue exactamente la trayectoria de la estela predictiva.
-        const launch = calcLaunchVelocity(startX, startY, targetX, targetY, weaponType);
+        // ── VELOCIDAD INICIAL ────────────────────────────────────────────────────
+        // Si viene un launch precalculado (disparo por Espacio), lo usa directamente.
+        // Si no, calcula desde la posición del ratón (disparo por clic).
+        const launch = precalcLaunch || calcLaunchVelocity(startX, startY, targetX, targetY, weaponType);
 
         if (weaponType === 'DYNAMITE') {
-            // La dinamita cae en vertical: sin impulso lateral
             this.sprite.setVelocity(0, 0);
         } else {
             this.sprite.setVelocity(launch.vx, launch.vy);

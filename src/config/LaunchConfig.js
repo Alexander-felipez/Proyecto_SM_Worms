@@ -109,3 +109,25 @@ export function simulateTrajectory(ox, oy, vx, vy, gravity, windSpeed, weaponKey
 
     return dots;
 }
+
+/**
+ * Variante para el sistema de carga con Espacio.
+ * Recibe el ángulo en radianes y la potencia normalizada (0-1).
+ *
+ * @param {number} angle      - Ángulo en radianes (desde el jugador al cursor)
+ * @param {number} power      - Potencia normalizada 0→1
+ * @param {string} weaponKey  - 'BAZOOKA' | 'GRENADE' | 'DYNAMITE'
+ * @returns {{ vx, vy, speed, angle, dist: 0 }}
+ */
+export function calcLaunchVelocityFromPower(angle, power, weaponKey) {
+    const cfg   = WEAPON_SPEEDS[weaponKey] || WEAPON_SPEEDS.BAZOOKA;
+    const speed = Phaser.Math.Linear(cfg.min, cfg.max, Phaser.Math.Clamp(power, 0, 1));
+
+    return {
+        vx:    Math.cos(angle) * speed,
+        vy:    Math.sin(angle) * speed,
+        speed,
+        angle,
+        dist: power * MAX_PULL_DISTANCE, // dist sintética para compatibilidad con AimingSystem
+    };
+}
