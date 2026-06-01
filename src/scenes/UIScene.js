@@ -168,6 +168,21 @@ export class UIScene extends Phaser.Scene {
         // Le da una atmósfera premium espacial/andina flotando suavemente en la UI
         this.addAmbientParticles();
 
+                // --- CONTADOR DE FPS (esquina inferior derecha) ---
+        this.fpsText = this.add.text(
+            this.cameras.main.width - 10,
+            this.cameras.main.height - 10,
+            'FPS: --',
+            {
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                fontStyle: 'bold',
+                color: '#00ff88',
+                stroke: '#000000',
+                strokeThickness: 3,
+            }
+        ).setOrigin(1, 1).setDepth(100);
+
         // --- ESCUCHAR EVENTOS ---
         this.events.on('turnStarted', (data) => {
             this.onTurnStarted(data);
@@ -560,4 +575,21 @@ export class UIScene extends Phaser.Scene {
         this.physVyText.setText(`Vy  :  ${vy}`).setColor('#7788aa');
         this.physWindText.setText(`Viento  :  ${kmh} km/h ${wDir}`).setColor('#5599bb');
     }
+
+    update() {
+        // Actualizar contador de FPS cada frame
+        if (this.fpsText) {
+            const fps = Math.round(this.game.loop.actualFps);
+            this.fpsText.setText(`FPS: ${fps}`);
+            // Color según rendimiento
+            if (fps >= 55) {
+                this.fpsText.setColor('#00ff88'); // Verde = bueno
+            } else if (fps >= 30) {
+                this.fpsText.setColor('#ffaa00'); // Naranja = regular
+            } else {
+                this.fpsText.setColor('#ff4444'); // Rojo = malo
+            }
+        }
+    }
+
 }

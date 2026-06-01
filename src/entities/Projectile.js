@@ -152,14 +152,6 @@ export class Projectile {
                     const oy = -Math.cos(angleRad) * 7;
                     this.fuseSpark.setPosition(this.sprite.x + ox, this.sprite.y + oy);
                 }
-
-                // 3. Colisión con Agua (salpicadura y auto-destrucción silenciosa)
-                if (this.scene.hasWater && this.scene.terrainManager && this.sprite.y >= this.scene.terrainManager.waterLevel) {
-                    const velY = this.sprite.body ? Math.abs(this.sprite.body.velocity.y) : 5;
-                    const splashForce = Phaser.Math.Clamp(velY / 8, 0.8, 2.5);
-                    this.scene.events.emit('waterSplash', { x: this.sprite.x, y: this.scene.terrainManager.waterLevel, force: splashForce });
-                    this.cleanup(); // desaparecer bajo el agua sin detonar la explosión en seco
-                }
             }
         };
         scene.events.on('update', this.updateListener);
@@ -213,43 +205,18 @@ export class Projectile {
         const shakeMultiplier = this.explosionRadius / 60;
         this.scene.cameras.main.shake(expCfg.CAMERA_SHAKE_DURATION, expCfg.CAMERA_SHAKE_INTENSITY * shakeMultiplier);
         
-        // 2. Partículas Visuales Premium (Fuego, Humo Denso y Escombros)
+        // 2. Partículas Visuales
         const fireEmitter = this.scene.add.particles(x, y, 'fire-particle', {
-            speed: { min: 100, max: 250 * shakeMultiplier }, 
-            angle: { min: 0, max: 360 }, 
-            scale: { start: 1.2 * shakeMultiplier, end: 0 },
-            blendMode: 'ADD', 
-            lifespan: 400, 
-            gravityY: 0
+            speed: { min: 100, max: 250 * shakeMultiplier }, angle: { min: 0, max: 360 }, scale: { start: 1.2 * shakeMultiplier, end: 0 },
+            blendMode: 'ADD', lifespan: 400, gravityY: 0
         });
-        fireEmitter.explode(22);
-        this.scene.time.delayedCall(600, () => fireEmitter.destroy()); // Liberar memoria
-
+        fireEmitter.explode(20);
+        
         const smokeEmitter = this.scene.add.particles(x, y, 'smoke-particle', {
-            speed: { min: 30, max: 95 * shakeMultiplier }, 
-            angle: { min: 180, max: 360 }, 
-            scale: { start: 0.8, end: 3.5 * shakeMultiplier },
-            alpha: { start: 0.65, end: 0 }, 
-            tint: 0x3d2b1f, 
-            lifespan: 1500, 
-            gravityY: -80
+            speed: { min: 30, max: 90 * shakeMultiplier }, angle: { min: 180, max: 360 }, scale: { start: 1, end: 4 * shakeMultiplier },
+            alpha: { start: 0.6, end: 0 }, tint: 0x444444, lifespan: 1800, gravityY: -60
         });
-        smokeEmitter.explode(18);
-        this.scene.time.delayedCall(2000, () => smokeEmitter.destroy()); // Liberar memoria
-
-        // Lluvia Premium de Escombros Físicos (Debris) con Gravedad y Colores de Tierra Arcillosa
-        const debrisColor = this.scene.mapConfig ? this.scene.mapConfig.terrainColor : 0x7a4a1e;
-        const debrisEmitter = this.scene.add.particles(x, y, 'fire-particle', {
-            speed: { min: 100, max: 300 * shakeMultiplier },
-            angle: { min: 200, max: 340 }, // Hacia arriba y a los lados
-            scale: { start: 0.5 * shakeMultiplier, end: 0.1 },
-            alpha: { start: 0.9, end: 0.1 },
-            tint: debrisColor,
-            lifespan: { min: 700, max: 1200 },
-            gravityY: 550, // Gravedad intensa para simular caída real
-        });
-        debrisEmitter.explode(25);
-        this.scene.time.delayedCall(1500, () => debrisEmitter.destroy()); // Liberar memoria
+        smokeEmitter.explode(15);
         
         let flash = this.scene.add.circle(x, y, this.explosionRadius, 0xffeebb, 0.95);
         this.scene.tweens.add({ targets: flash, alpha: 0, scale: 2.2, duration: expCfg.FLASH_DURATION, onComplete: () => flash.destroy() });
@@ -273,6 +240,31 @@ export class Projectile {
                     
                     finalDamage = Math.max(5, Math.round(finalDamage));
                     playerEntity.takeDamage(finalDamage, this.owner);
+
+                    // --- NÚMERO DE DAÑO FLOTANTE ---
+                    const dmgX = playerEntity.sprite.x + Phaser.Math.Between(-10, 10);
+                    const dmgY = playerEntity.sprite.y - 20;
+                    const isOwn = this.owner && this.owner === playerEntity;
+                    const dmgColor = isOwn ? '#ff4444' : '#ff9900';
+
+                    const dmgText = this.scene.add.text(dmgX, dmgY, `-${finalDamage}`, {
+                        fontSize: '18px',
+                        fontFamily: 'monospace',
+                        fontStyle: 'bold',
+                        color: dmgColor,
+                        stroke: '#000000',
+                        strokeThickness: 4,
+                    }).setDepth(200).setOrigin(0.5);
+
+                    // Animación: sube y desaparece en 1 segundo
+                    this.scene.tweens.add({
+                        targets: dmgText,
+                        y: dmgY - 50,
+                        alpha: 0,
+                        duration: 1000,
+                        ease: 'Power2',
+                        onComplete: () => dmgText.destroy()
+                    });
                 }
             }
         }

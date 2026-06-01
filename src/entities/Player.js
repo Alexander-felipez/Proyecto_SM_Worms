@@ -355,7 +355,7 @@ export class Player {
                 this.createDustPoof(1);
             }
             
-            if (cursors.up.isDown && this.canJump) {
+            if (cursors.space.isDown && this.canJump) {
                 this.canJump = false;
                 this.sprite.setVelocityY(GAME_CONFIG.PLAYER.JUMP_FORCE);
                 this.createDustPoof(6);

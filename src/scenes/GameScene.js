@@ -83,17 +83,10 @@ export class GameScene extends Phaser.Scene {
         const allPlayers = [];
         const totalPlayers = this.room.players.length;
 
-        // ── Zonas de spawn por mapa ──
-        // SANTA_CRUZ: acantilado izquierdo, acantilado derecho, meseta central
-        const biome = this.mapConfig.biome || '';
-        const spawnZones = {
-            SANTA_CRUZ: [
-                { xMin: 250, xMax: 680 },    // Acantilado izquierdo
-                { xMin: 2400, xMax: 2900 },   // Acantilado derecho
-                { xMin: 1300, xMax: 1900 },   // Meseta central
-            ],
-        };
-        const zones = spawnZones[biome] || null;
+        // ── Spawn central: todos los jugadores aparecen juntos en el centro del mapa ──
+        const mapCenterX = (this.mapConfig.mapWidth || GAME_CONFIG.MAP.DEFAULT_WIDTH) / 2;
+        // Separación horizontal pequeña entre jugadores (ej: -30, 0, +30 para 3 jugadores)
+        const spawnSpreadX = 40; // píxeles entre cada jugador
 
         this.room.players.forEach((pData, index) => {
             let isLocal;
@@ -106,15 +99,10 @@ export class GameScene extends Phaser.Scene {
                 isLocal = true;
             }
 
-            // Calcular posición de spawn: por zonas o equidistante
-            let spawnX;
-            if (zones) {
-                const zone = zones[index % zones.length];
-                spawnX = Phaser.Math.Between(zone.xMin, zone.xMax);
-            } else {
-                const spawnSpacing = (GAME_CONFIG.MAP.DEFAULT_WIDTH - 400) / (totalPlayers + 1);
-                spawnX = 200 + spawnSpacing * (index + 1);
-            }
+            // Spawn centrado: el primer jugador queda un poco a la izquierda del centro,
+            // el segundo un poco a la derecha, etc.
+            const offset = (index - (totalPlayers - 1) / 2) * spawnSpreadX;
+            let spawnX = mapCenterX + offset;
             const spawnPos = this.terrainManager.getSafeSpawnPosition(spawnX);
             
             let teamKey = pData.team || (index === 0 ? 'RED' : 'BLUE');
@@ -328,13 +316,13 @@ export class GameScene extends Phaser.Scene {
         if (this.mapConfig.biome === 'SANTA_CRUZ') {
             this.introCinematicActive = true;
             
-            // 1. Iniciar cámara en el acantilado izquierdo con alto zoom
-            this.cameras.main.setZoom(1.15);
-            this.cameras.main.centerOn(350, 750);
+            // 1. Iniciar cámara con vista panorámica amplia centrada en el mapa
+            this.cameras.main.setZoom(0.45);
+            this.cameras.main.centerOn(mapW / 2, mapH / 2);
             
-            // 2. Primera fase: Paneo majestuoso al acantilado derecho + vista panorámica aérea
-            this.cameras.main.pan(2850, 800, 3200, 'Cubic.easeInOut');
-            this.cameras.main.zoomTo(0.45, 3200, 'Cubic.easeInOut');
+            // 2. Primera fase: Zoom suave hacia los jugadores en el centro
+            this.cameras.main.pan(mapW / 2, mapH / 2, 3200, 'Cubic.easeInOut');
+            this.cameras.main.zoomTo(1.0, 3200, 'Cubic.easeInOut');
 
             // 3. Segunda fase: Paneo y zoom de vuelta al jugador activo tras 3200ms
             this.time.delayedCall(3200, () => {

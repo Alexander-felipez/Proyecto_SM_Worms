@@ -38,7 +38,14 @@ export class GameManager {
             render: {
                 antialias: true,
                 antialiasGL: true
-            }
+            },
+            fps: {
+                target: 60,
+                forceSetTimeOut: false,
+                deltaHistory: 10,
+                panicMax: 120,
+            },
+            showFPS: true
         };
 
         this.game = new Phaser.Game(config);
