@@ -1,39 +1,49 @@
-# Bolivia Tactics 2D
+﻿# 🪱 Proyecto SM - Worms Clone (Simulador Multimedia Interactivo)
 
-Juego 2D táctico por turnos inspirado en Worms, ambientado en distintos biomas de Bolivia con una dirección artística cinematográfica y moderna.
+Este repositorio contiene el código fuente y los activos multimedia optimizados de un ecosistema interactivo bidimensional basado en físicas y turnos, inspirado en el clásico "Worms". El proyecto está desarrollado utilizando **Phaser 3**, **Vite** y **Node.js** con WebSockets para capacidades multijugador en tiempo real.
 
-## Stack Tecnológico
+## 📁 Estructura del Proyecto y Activos Multimedia
 
-- **Frontend:** Phaser 3, Matter.js (Físicas), HTML5 Canvas, JS ES6 Modules.
-- **Herramientas:** Vite (Bundler), npm.
+La arquitectura del proyecto garantiza una separación estricta entre la lógica algorítmica y los activos multimedia (assets), permitiendo un pipeline de pre-procesamiento escalable:
 
-## Empezando
+- `/public/assets/images/`: Texturas optimizadas, spritesheets y gráficos rasterizados.
+- `/public/assets/audio/`: Archivos de audio (SFX y música) comprimidos (.mp3 y .wav) para retroalimentación interactiva y procedural.
+- `/src/`: Lógica algorítmica estructurada (Sistemas, Entidades, Escenas y Configuración).
+- `/server/`: Lógica del servidor para sincronización multijugador vía WebSockets.
+- `/styles/`: Hojas de estilo CSS que componen la interfaz de usuario externa al canvas de WebGL.
 
-1. `npm install`
-2. `npm run dev` (Inicia servidor de desarrollo con Vite)
-3. `npm run build` (Crea build de producción)
+## 🚀 Requisitos Previos
 
-## Estructura de Directorios
+Para la correcta ejecución del simulador interactivo y evitar bloqueos de seguridad del navegador (CORS) al cargar texturas en el contexto de WebGL, el proyecto **debe** ejecutarse a través de un servidor local.
 
-- `src/scenes/` - Lógica de escenas (Menú principal, Juego, Preload, UI).
-- `src/entities/` - Clases de personajes, armas y proyectiles.
-- `src/systems/` - Lógicas genéricas separadas (Físicas, Manejador de turnos, Sistemas de partículas).
-- `src/config/` - Definiciones de biomas, constantes, configuración de físicas.
-- `src/utils/` - Utilidades y helpers matemáticos/visuales.
-- `src/assets/` - Imágenes y recursos de audio.
+- **Node.js** (v16.x o superior recomendado)
+- **NPM** (Node Package Manager)
 
-## Características Base (Prototipo Actual)
+## 🛠️ Instalación y Despliegue Local
 
-- **Físicas con Matter.js:** El jugador es un objeto con físicas, puede saltar y sufrir fuerzas.
-- **Armas y Explosiones:** Haces click e invocas un proyectil; al colisionar genera una explosión con _Camera Shake_, onda expansiva física y _flash_ visual.
-- **Terreno Prototipo:** El bioma base (GameScene) simula temporalmente "Santa Cruz Tropical" utilizando físicas de Matter.js puras y colores cálidos.
+Sigue estos pasos para levantar ambos entornos (Backend y Frontend):
 
-## Próximos Pasos (Hoja de Ruta)
+1. **Clonar el repositorio:**
+   ```bash
+   git clone https://github.com/Alexander-felipez/Proyecto_SM_Worms.git
+   cd Proyecto_SM_Worms
+   ```
 
-- Implementar deformación de terreno real con Canvas/RenderTexture (máscaras de colisión para destrucción voxel/polígonos de Matter).
-- Configurar estados completos de Turnos e IAs básicas usando `systems/TurnManager.js`.
-- Integrar assets generados y optimizados de los 4 biomas:
-  1. *Santa Cruz Tropical*
-  2. *La Paz Altura Extrema*
-  3. *Luna / Espacio*
-  4. *Salar de Uyuni Futurista*
+2. **Instalar dependencias:**
+   ```bash
+   npm install
+   ```
+
+3. **Ejecutar el servidor local y el entorno de desarrollo Vite:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Acceder a la aplicación:**
+   Abre tu navegador de preferencia y dirígete a la dirección local que Vite indique en la terminal (usualmente `http://localhost:5173`).
+
+## ⚙️ Tecnologías Utilizadas
+- **Motor Gráfico:** Phaser 3 (Renderizado dinámico con WebGL/Canvas2D).
+- **Control de Paquetes y Bundler:** Vite.
+- **Backend y Red:** Node.js, Express y Socket.io.
+- **Activos:** Imágenes optimizadas y audios procesados para balancear calidad de fidelidad y rendimiento de la GPU/CPU.
