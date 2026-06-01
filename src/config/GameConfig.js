@@ -5,6 +5,12 @@
  */
 
 export const GAME_CONFIG = {
+    // --- SONIDO ---
+    SOUND: {
+        ENABLED: true,
+        VOLUME: 1.0,
+    },
+
     // --- JUGADOR ---
     PLAYER: {
         MAX_HP: 100,

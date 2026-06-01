@@ -5,6 +5,8 @@ import { Player } from '../entities/Player';
 import { Projectile } from '../entities/Projectile';
 import { AimingSystem } from '../systems/AimingSystem';
 import { ChargeSystem } from '../systems/ChargeSystem';
+import { CameraSystem } from '../systems/CameraSystem';
+import { SoundManager } from '../systems/SoundManager';
 import { GAME_CONFIG } from '../config/GameConfig';
 import { getMapConfig } from '../config/MapConfig';
 import { calcLaunchVelocityFromPower } from '../config/LaunchConfig';
@@ -142,7 +144,8 @@ export class GameScene extends Phaser.Scene {
             if (currentPlayer) {
                 this.currentWeaponKey = 'NONE';
                 this.events.emit('weaponChanged', { weaponKey: 'NONE', ammo: null });
-                this.cameras.main.startFollow(currentPlayer.sprite, true, 0.08, 0.08);
+                this.cameraSystem.followPlayer(currentPlayer.sprite);
+                this.soundManager.playTurnStart();
             }
             // Resetear bloqueo post-disparo para todos los jugadores
             Object.values(this.playersLookup).forEach(p => { p.hasFired = false; });
@@ -158,6 +161,7 @@ export class GameScene extends Phaser.Scene {
             this.chargeSystem.disable();
             this.scene.get('UIScene').events.emit('chargeUpdate', 0);
             this.scene.get('UIScene').events.emit('turnEnded', data);
+            this.soundManager.playTurnEnd();
         });
 
         this.turnManager.on('turnTimeTick', (timeRemaining) => {
@@ -165,6 +169,8 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.turnManager.on('gameOver', (data) => {
+            this.soundManager.stopMusic();
+            this.soundManager.playGameOver();
             // Recopilar estadísticas de todos los jugadores
             const stats = {};
             for (let id in this.playersLookup) {
@@ -229,39 +235,13 @@ export class GameScene extends Phaser.Scene {
             });
         }
         
-        // 🎥 CONFIGURAR CÁMARA SEGUIDORA
-        // Limitar la cámara al mundo del juego (no puede salirse del mapa)
-        this.cameras.main.setBounds(0, 0, GAME_CONFIG.MAP.DEFAULT_WIDTH, GAME_CONFIG.MAP.DEFAULT_HEIGHT);
+        // 🎥 SISTEMA DE CÁMARA — delegar toda la lógica a CameraSystem
+        this.cameraSystem = new CameraSystem(this);
+        this.cameraSystem.init(this.mapConfig, this.myPlayer);
 
-        // Zoom panorámico inicial para mapas grandes (SANTA_CRUZ)
-        if (this.mapConfig.biome === 'SANTA_CRUZ') {
-            // Vista panorámica al inicio para apreciar el cañón
-            this.cameras.main.setZoom(0.55);
-            this.cameras.main.centerOn(GAME_CONFIG.MAP.DEFAULT_WIDTH / 2, GAME_CONFIG.MAP.DEFAULT_HEIGHT * 0.55);
-
-            // Zona muerta ampliada: la cámara no sigue micro-movimientos
-            this.cameras.main.setDeadzone(120, 80);
-
-            // Tras 2.5 s, hacer zoom in suave hacia el jugador activo
-            this.time.delayedCall(2500, () => {
-                this.tweens.add({
-                    targets: this.cameras.main,
-                    zoom: 0.85,
-                    duration: 1200,
-                    ease: 'Sine.easeInOut',
-                    onComplete: () => {
-                        if (this.myPlayer) {
-                            this.cameras.main.startFollow(this.myPlayer.sprite, true, 0.07, 0.07);
-                        }
-                    }
-                });
-            });
-        } else {
-            // Comportamiento original para otros mapas
-            if (this.myPlayer) {
-                this.cameras.main.startFollow(this.myPlayer.sprite, true, 0.08, 0.08);
-            }
-        }
+        // 🔊 SISTEMA DE SONIDO PROCEDURAL
+        this.soundManager = new SoundManager(this);
+        this.soundManager.startMusic();
 
         // ¡Comenzar el juego de turnos!
         this.time.delayedCall(1000, () => {
@@ -299,12 +279,24 @@ export class GameScene extends Phaser.Scene {
         });
 
         // Crear proyectil con el arma seleccionada
-        new Projectile(this, shooter.sprite.x, shooter.sprite.y, pointer.worldX, pointer.worldY, shooter, this.currentWeaponKey);
+        const proj = new Projectile(this, shooter.sprite.x, shooter.sprite.y, pointer.worldX, pointer.worldY, shooter, this.currentWeaponKey);
 
-        // Bloquear movimiento del jugador hasta el próximo turno
-        shooter.hasFired = true;
+        // 🔊 Sonido de disparo
+        this.soundManager.playShoot(this.currentWeaponKey);
 
-        // Ocultar el sistema de apuntado al disparar
+        // 🎥 Cámara sigue al proyectil
+        this.cameraSystem.followProjectile(proj.sprite, this.currentWeaponKey);
+
+        // Bazooka y Granada: bloqueo inmediato
+        // Dinamita: 5 segundos de movilidad para alejarse (mecha dura 4s)
+        if (this.currentWeaponKey === 'DYNAMITE') {
+            this.time.delayedCall(5000, () => {
+                if (shooter.alive) shooter.hasFired = true;
+            });
+        } else {
+            shooter.hasFired = true;
+        }
+
         this.aimingSystem.hide();
     }
     
@@ -434,7 +426,7 @@ export class GameScene extends Phaser.Scene {
         // Calcular velocidad usando potencia manual en lugar de distancia de ratón
         const launch = calcLaunchVelocityFromPower(angle, power, this.currentWeaponKey);
 
-        new Projectile(
+        const proj = new Projectile(
             this,
             shooter.sprite.x, shooter.sprite.y,
             shooter.sprite.x + Math.cos(angle) * 100,
@@ -444,8 +436,20 @@ export class GameScene extends Phaser.Scene {
             launch
         );
 
+        // 🔊 Sonido de disparo
+        this.soundManager.playShoot(this.currentWeaponKey);
+
+        // 🎥 Cámara sigue al proyectil
+        this.cameraSystem.followProjectile(proj.sprite, this.currentWeaponKey);
+
         // Bloquear movimiento del jugador hasta el próximo turno
-        shooter.hasFired = true;
+        if (this.currentWeaponKey === 'DYNAMITE') {
+            this.time.delayedCall(5000, () => {
+                if (shooter.alive) shooter.hasFired = true;
+            });
+        } else {
+            shooter.hasFired = true;
+        }
 
         this.aimingSystem.hide();
         this.chargeSystem.reset();
@@ -467,6 +471,9 @@ export class GameScene extends Phaser.Scene {
         if (this.socket && currentPlayer.id !== this.myId) return;
 
         this.currentWeaponKey = weaponKey;
+
+        // 🔊 Sonido de cambio de arma
+        if (weaponKey !== 'NONE') this.soundManager.playWeaponSwitch();
 
         // Limpiar mira de inmediato si el arma nueva no la necesita
         if (weaponKey === 'NONE' || weaponKey === 'DYNAMITE') {

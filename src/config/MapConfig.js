@@ -18,7 +18,7 @@ export const MAP_CONFIGS = {
         skyColor: '#87CEEB',          // Celeste despejado
         hasWater: true,
         waterColor: 0x0066aa,
-        gravity: 1.0,
+        gravity: 1.5,        // Alta altitud: gravedad mayor, disparos más cortos
 
         /**
          * Relieve empinado estilo cañón andino.
@@ -49,7 +49,7 @@ export const MAP_CONFIGS = {
         skyColor: '#1a0a00',          // Atardecer oscuro (gestionado por paralaje)
         hasWater: true,
         waterColor: 0x005f99,
-        gravity: 1.0,
+        gravity: 2.0,        // Tierras bajas tropicales: gravedad máxima, disparos muy pesados
 
         /**
          * Terreno en forma de cañón: acantilados altos en los flancos (X≈0.18 y X≈0.82)

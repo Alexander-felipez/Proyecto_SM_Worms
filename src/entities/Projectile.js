@@ -196,6 +196,11 @@ export class Projectile {
 
         const expCfg = GAME_CONFIG.EXPLOSION;
 
+        // 🔊 Sonido de explosión
+        if (this.scene.soundManager) {
+            this.scene.soundManager.playExplosion(this.weaponKey);
+        }
+
         // 1. Game Feel (Sacudida de pantalla más fuerte según el radio de explosión)
         const shakeMultiplier = this.explosionRadius / 60;
         this.scene.cameras.main.shake(expCfg.CAMERA_SHAKE_DURATION, expCfg.CAMERA_SHAKE_INTENSITY * shakeMultiplier);

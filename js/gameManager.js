@@ -5,6 +5,7 @@ import { PreloadScene } from '../src/scenes/PreloadScene.js';
 import { GameScene } from '../src/scenes/GameScene.js';
 import { UIScene } from '../src/scenes/UIScene.js';
 import { GameOverScene } from '../src/scenes/GameOverScene.js';
+import { PauseScene } from '../src/scenes/PauseScene.js';
 
 export class GameManager {
     constructor(containerId, options = {}) {
@@ -31,7 +32,7 @@ export class GameManager {
                     debug: true
                 }
             },
-            scene: [BootScene, PreloadScene, GameScene, UIScene, GameOverScene],
+            scene: [BootScene, PreloadScene, GameScene, UIScene, GameOverScene, PauseScene],
             pixelArt: false,
             backgroundColor: '#000000',
             render: {
@@ -45,6 +46,8 @@ export class GameManager {
         // Pasar opciones a las escenas
         this.game.registry.set('gameOptions', this.options);
         this.game.registry.set('selectedMap', this.options.map || (this.options.settings && this.options.settings.map) || 'el_alto');
+        this.game.registry.set('SOUND_ENABLED', true);
+        this.game.registry.set('SOUND_VOLUME', 1.0);
 
         // Escuchar evento de "volver al menú" desde GameOverScene
         this.game.events.on('returnToMenu', () => {

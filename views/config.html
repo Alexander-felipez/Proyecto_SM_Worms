@@ -1,0 +1,58 @@
+<div class="menu-container glass-panel" style="padding: 50px 60px; max-width: 520px; width: 90%;">
+
+    <!-- Encabezado -->
+    <div>
+        <h1 class="menu-title" style="font-size: 42px;">Entrenamiento Local</h1>
+        <p class="menu-subtitle">Configura tu partida</p>
+    </div>
+
+    <!-- Opciones -->
+    <div class="local-config-options">
+
+        <!-- Mapa -->
+        <div class="config-row">
+            <label class="config-label">🗺️ Mapa</label>
+            <div class="config-select-wrapper">
+                <select class="config-select" id="local-map-select">
+                    <option value="luna">🌕 Luna  —  Gravedad baja</option>
+                    <option value="el_alto" selected>🏔️ El Alto  —  Gravedad media</option>
+                    <option value="santa_cruz">🌴 Santa Cruz  —  Gravedad alta</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Jugadores -->
+        <div class="config-row">
+            <label class="config-label">👥 Jugadores</label>
+            <div class="config-selector" id="players-selector">
+                <button class="selector-btn active" data-value="2">2</button>
+                <button class="selector-btn" data-value="3">3</button>
+                <button class="selector-btn" data-value="4">4</button>
+            </div>
+        </div>
+
+        <!-- Tiempo límite -->
+        <div class="config-row">
+            <label class="config-label">⏱️ Tiempo / Turno</label>
+            <div class="config-selector" id="time-selector">
+                <button class="selector-btn" data-value="60">1 min</button>
+                <button class="selector-btn active" data-value="120">2 min</button>
+                <button class="selector-btn" data-value="180">3 min</button>
+                <button class="selector-btn" data-value="300">5 min</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Botones de acción -->
+    <div class="config-actions">
+        <button class="menu-btn config-btn-back" data-action="back-to-menu">
+            ← Volver
+        </button>
+        <button class="menu-btn config-btn-start" data-action="start-local-game">
+            ▶ Jugar
+        </button>
+    </div>
+
+    <div class="menu-footer">v1.0.0 • Desarrollado por GameStudio • 2026</div>
+</div>

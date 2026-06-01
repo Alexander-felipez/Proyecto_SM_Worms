@@ -117,8 +117,7 @@ export class PreloadScene extends Phaser.Scene {
         bazookaGfx.generateTexture('bazookaWeapon', 20, 16);
         bazookaGfx.destroy();
 
-        // ── Assets de Santa Cruz (generados con IA) ──
-        // Se cargan con error-handler para no romper si el archivo no existe.
+        // ── Assets de imágenes ──
         this.load.on('loaderror', (file) => {
             console.warn(`[PreloadScene] Asset no encontrado: ${file.key} (${file.src}) — se usará fallback procedimental.`);
         });
@@ -127,6 +126,16 @@ export class PreloadScene extends Phaser.Scene {
         this.load.image('terrain_dirt', 'assets/images/terrain_dirt.png');
         this.load.image('terrain_grass','assets/images/terrain_grass.png');
         this.load.image('sprite_palm',  'assets/images/sprite_palm.png');
+
+        // ── Audios del juego ──
+        // Ruta: assets/audio/
+        // NOTA: bazoka.flac puede no funcionar en Safari/iOS, convertir a mp3 si es necesario
+        this.load.audio('sfx_bazooka_disparo',     'assets/audio/bazoka.mp3');
+        this.load.audio('sfx_bazooka_trayectoria', 'assets/audio/sonido_trayectoria_bazoka.wav');
+        this.load.audio('sfx_granada',             'assets/audio/granada.mp3');
+        this.load.audio('sfx_dinamita_explosion',  'assets/audio/dinamita.wav');
+        this.load.audio('sfx_salto',               'assets/audio/salto.mp3');
+        this.load.audio('sfx_turno_notificacion',  'assets/audio/notificacion_turno.wav');
     }
 
     create() {

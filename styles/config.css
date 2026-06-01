@@ -1,0 +1,153 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   local-config.css
+   Estilos del submenú de configuración de Entrenamiento Local.
+   Se aplica sobre las variables globales de main.css.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Vista contenedora — mismo patrón que #menu-view */
+#local-config-view.active {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(5, 8, 18, 0.9) 0%, rgba(26, 15, 63, 0.9) 100%);
+    background-image:
+        radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(255, 107, 0, 0.1) 0%, transparent 50%);
+    animation: fadeInDown 0.35s ease;
+}
+
+/* ── Filas de configuración ─────────────────────────────────────────────── */
+.local-config-options {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    margin: 32px 0 28px;
+    width: 100%;
+}
+
+.config-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.config-label {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 130px;
+}
+
+/* ── Select de mapa ─────────────────────────────────────────────────────── */
+.config-select-wrapper {
+    flex: 1;
+}
+
+.config-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: rgba(6, 10, 28, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 8px;
+    color: var(--primary);
+    font-family: var(--font-family);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2300d4ff' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+    transition: var(--transition);
+}
+
+.config-select:hover,
+.config-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.25);
+    outline: none;
+}
+
+.config-select option {
+    background: #07091a;
+    color: #fff;
+}
+
+/* ── Selector de botones (jugadores / tiempo) ───────────────────────────── */
+.config-selector {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.selector-btn {
+    flex: 1;
+    padding: 9px 6px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--font-family);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.selector-btn:hover {
+    border-color: rgba(0, 212, 255, 0.5);
+    color: var(--primary);
+    background: rgba(0, 212, 255, 0.07);
+}
+
+.selector-btn.active {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.25), rgba(0, 255, 136, 0.15));
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+/* ── Botones de acción: Volver + Jugar ──────────────────────────────────── */
+.config-actions {
+    display: flex;
+    gap: 14px;
+    width: 100%;
+}
+
+.config-btn-back {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: var(--text-secondary) !important;
+    font-size: 15px !important;
+}
+
+.config-btn-back:hover {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: #fff !important;
+    transform: translateY(-2px) !important;
+    box-shadow: none !important;
+}
+
+.config-btn-start {
+    flex: 2;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 255, 136, 0.15)) !important;
+    border-color: var(--accent) !important;
+    color: #fff !important;
+    font-size: 17px !important;
+}
+
+.config-btn-start:hover {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.35), rgba(0, 255, 136, 0.25)) !important;
+    box-shadow: 0 0 28px rgba(0, 255, 136, 0.45), inset 0 0 8px rgba(255, 255, 255, 0.08) !important;
+}

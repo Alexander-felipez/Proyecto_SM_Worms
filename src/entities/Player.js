@@ -127,6 +127,9 @@ export class Player {
 
         // Efecto visual de daño (flash rojo)
         this.sprite.setTint(0xff0000);
+
+        // 🔊 Sonido de daño
+        if (this.scene.soundManager) this.scene.soundManager.playDamage();
         this.scene.time.delayedCall(150, () => {
             if (this.alive && this.sprite.active) {
                 this.sprite.clearTint();
@@ -197,6 +200,9 @@ export class Player {
     die() {
         if (!this.alive) return;
         this.alive = false;
+
+        // 🔊 Sonido de muerte
+        if (this.scene.soundManager) this.scene.soundManager.playDeath();
 
         // Limpiar listener de salto
         if (this._jumpCollisionListener) {
@@ -326,8 +332,11 @@ export class Player {
             
             if (cursors.up.isDown && this.canJump) {
                 this.canJump = false;
-                this.sprite.setVelocityY(GAME_CONFIG.PLAYER.JUMP_FORCE); // Salto
-                this.createDustPoof(6); // Más polvo al saltar
+                this.sprite.setVelocityY(GAME_CONFIG.PLAYER.JUMP_FORCE);
+                this.createDustPoof(6);
+
+                // 🔊 Sonido de salto
+                if (this.scene.soundManager) this.scene.soundManager.playJump();
 
                 // 🪱 ANIMACIÓN DE SALTO — Estirar verticalmente
                 this.scene.tweens.killTweensOf(this.sprite, 'scaleX');

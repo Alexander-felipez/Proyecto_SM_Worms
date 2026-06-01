@@ -114,10 +114,44 @@ export class UIScene extends Phaser.Scene {
             this._updateChargeBar(power);
         });
 
-        // --- 3. PANEL DE ARSENAL (Glassmorphism) ---
+        // --- BOTÓN DE PAUSA (esquina superior derecha, fila propia encima del arsenal) ---
         const camWidth = this.cameras.main.width;
-        this.weaponPanelGfx = this.drawGlassPanel(camWidth - 280, 10, 270, 80, 0xffaa00);
-        
+
+        const pauseGfx = this.add.graphics();
+        const PAUSE_X = camWidth - 10;
+        const PAUSE_Y = 10;
+        const PAUSE_W = 44;
+        const PAUSE_H = 36;
+
+        const pauseBtn = this.add.rectangle(PAUSE_X - PAUSE_W / 2, PAUSE_Y + PAUSE_H / 2, PAUSE_W, PAUSE_H, 0x000000, 0.01)
+            .setInteractive({ useHandCursor: true });
+
+        const drawPause = (hover) => {
+            pauseGfx.clear();
+            pauseGfx.fillStyle(hover ? 0x111e3a : 0x060a1c, hover ? 0.95 : 0.75);
+            pauseGfx.fillRoundedRect(PAUSE_X - PAUSE_W, PAUSE_Y, PAUSE_W, PAUSE_H, 7);
+            pauseGfx.lineStyle(1.5, 0x00ffff, hover ? 1 : 0.5);
+            pauseGfx.strokeRoundedRect(PAUSE_X - PAUSE_W, PAUSE_Y, PAUSE_W, PAUSE_H, 7);
+            // Icono ⏸ — dos barras verticales centradas
+            const cx = PAUSE_X - PAUSE_W / 2;
+            const cy = PAUSE_Y + PAUSE_H / 2;
+            pauseGfx.fillStyle(0x00ffff, hover ? 1 : 0.7);
+            pauseGfx.fillRect(cx - 8, cy - 9, 6, 18);
+            pauseGfx.fillRect(cx + 2, cy - 9, 6, 18);
+        };
+        drawPause(false);
+
+        pauseBtn.on('pointerover',  () => drawPause(true));
+        pauseBtn.on('pointerout',   () => drawPause(false));
+        pauseBtn.on('pointerdown',  () => {
+            this.scene.pause('GameScene');
+            this.scene.launch('PauseScene');
+        });
+
+        // --- 3. PANEL DE ARSENAL (debajo del botón de pausa, sin encimar) ---
+        // El arsenal arranca en y:54 para dejar espacio al botón de pausa (h:36 + margen)
+        this.weaponPanelGfx = this.drawGlassPanel(camWidth - 280, 54, 270, 80, 0xffaa00);
+
         // Crear selector de armas interactivo
         this.createWeaponSelector();
 
@@ -189,7 +223,7 @@ export class UIScene extends Phaser.Scene {
     createWeaponSelector() {
         const camWidth = this.cameras.main.width;
         const startX = camWidth - 275;
-        const startY = 15;
+        const startY = 58;  // Debajo del botón de pausa (h:36 + margen)
         const itemW = 80;
         const itemH = 70;
         const spacing = 5;
@@ -527,4 +561,3 @@ export class UIScene extends Phaser.Scene {
         this.physWindText.setText(`Viento  :  ${kmh} km/h ${wDir}`).setColor('#5599bb');
     }
 }
-    
