@@ -144,11 +144,52 @@ export class GameScene extends Phaser.Scene {
             if (currentPlayer) {
                 this.currentWeaponKey = 'NONE';
                 this.events.emit('weaponChanged', { weaponKey: 'NONE', ammo: null });
-                this.cameraSystem.followPlayer(currentPlayer.sprite);
-                this.soundManager.playTurnStart();
+                if (this.cameraSystem) {
+                    this.cameraSystem.followPlayer(currentPlayer.sprite);
+                } else if (!this.introCinematicActive) {
+                    this.cameras.main.startFollow(currentPlayer.sprite, true, 0.08, 0.08);
+                }
+                
+                if (this.soundManager) {
+                    this.soundManager.playTurnStart();
+                }
             }
             // Resetear bloqueo post-disparo para todos los jugadores
             Object.values(this.playersLookup).forEach(p => { p.hasFired = false; });
+
+            // --- Actualizar partículas de viento ambiental ---
+            const wind = data.windSpeed || 0;
+            // Destruir emitter anterior si existe
+            if (this.windParticles) {
+                this.windParticles.destroy();
+                this.windParticles = null;
+            }
+
+            if (Math.abs(wind) > 0.00001) {
+                const mapW = (this.mapConfig && this.mapConfig.mapWidth) || GAME_CONFIG.MAP.DEFAULT_WIDTH;
+                const mapH = (this.mapConfig && this.mapConfig.mapHeight) || GAME_CONFIG.MAP.DEFAULT_HEIGHT;
+                const windVelX = wind * 850000;
+                const dir = Math.sign(wind);
+
+                // Crear nuevo emitter con la velocidad correcta para este turno
+                const emitX = dir > 0 ? -40 : mapW + 40;
+                this.windParticles = this.add.particles(emitX, 0, 'smoke-particle', {
+                    scale: { start: 0.05, end: 0.015 },
+                    alpha: { start: 0.18, end: 0 },
+                    lifespan: 5500,
+                    frequency: 75,
+                    quantity: 1,
+                    tint: 0xeeeeee,
+                    speedX: { min: windVelX * 0.8, max: windVelX * 1.2 },
+                    speedY: { min: -8, max: 8 },
+                    gravityY: 15,
+                    emitZone: {
+                        type: 'random',
+                        source: new Phaser.Geom.Rectangle(0, 0, 5, mapH)
+                    }
+                });
+                this.windParticles.setDepth(1);
+            }
 
             if (!this.socket || this.isHost) {
                 this.chargeSystem.enable();
@@ -234,8 +275,48 @@ export class GameScene extends Phaser.Scene {
                 this.updateFromHost(state);
             });
         }
+
+        // --- PARTÍCULAS AMBIENTALES DE VIENTO ---
+        // Se inicializa null; se crea/recrea en cada turno con las params adecuadas
+        this.windParticles = null;
+        this.windParticlesActive = false;
+
+        // --- EVENTO REACTIVO DE SALPICADURA DE AGUA (Splash y Ondas) ---
+        this.events.on('waterSplash', ({ x, y, force }) => {
+            // 1. Gotas físicas de agua proyectadas hacia arriba
+            const droplets = this.add.particles(x, y, 'smoke-particle', {
+                speedY: { min: -100 * force, max: -220 * force },
+                speedX: { min: -60 * force, max: 60 * force },
+                scale: { start: 0.12 * force, end: 0.02 },
+                alpha: { start: 0.8, end: 0 },
+                tint: 0x90caf9, // Azul celeste traslúcido
+                lifespan: { min: 400, max: 800 },
+                gravityY: 450, // Gravedad
+            });
+            droplets.setDepth(6);
+            droplets.explode(18);
+            this.time.delayedCall(1000, () => droplets.destroy()); // Liberar memoria
+
+            // 2. Ripple elíptico en la superficie
+            const ripple = this.add.circle(x, y, 5, 0xe3f2fd, 0.55);
+            ripple.setDepth(6);
+            this.tweens.add({
+                targets: ripple,
+                scaleX: 12 * force,
+                scaleY: 2.2 * force, // Ovalo aplanado
+                alpha: 0,
+                duration: 600,
+                ease: 'Quad.easeOut',
+                onComplete: () => ripple.destroy()
+            });
+        });
         
-        // 🎥 SISTEMA DE CÁMARA — delegar toda la lógica a CameraSystem
+        // 🎥 CONFIGURAR CÁMARA SEGUIDORA
+        const mapW = this.mapConfig.mapWidth || GAME_CONFIG.MAP.DEFAULT_WIDTH;
+        const mapH = this.mapConfig.mapHeight || GAME_CONFIG.MAP.DEFAULT_HEIGHT;
+        this.cameras.main.setBounds(0, 0, mapW, mapH);
+
+        // 🎥 SISTEMA DE CÁMARA — delegar toda la lógica a CameraSystem (nuestra refact)
         this.cameraSystem = new CameraSystem(this);
         this.cameraSystem.init(this.mapConfig, this.myPlayer);
 
@@ -243,10 +324,47 @@ export class GameScene extends Phaser.Scene {
         this.soundManager = new SoundManager(this);
         this.soundManager.startMusic();
 
-        // ¡Comenzar el juego de turnos!
-        this.time.delayedCall(1000, () => {
-            this.turnManager.startGame();
-        });
+        // ¡Comenzar el juego! (Lógica cinemática combinada con inicio de turnos)
+        if (this.mapConfig.biome === 'SANTA_CRUZ') {
+            this.introCinematicActive = true;
+            
+            // 1. Iniciar cámara en el acantilado izquierdo con alto zoom
+            this.cameras.main.setZoom(1.15);
+            this.cameras.main.centerOn(350, 750);
+            
+            // 2. Primera fase: Paneo majestuoso al acantilado derecho + vista panorámica aérea
+            this.cameras.main.pan(2850, 800, 3200, 'Cubic.easeInOut');
+            this.cameras.main.zoomTo(0.45, 3200, 'Cubic.easeInOut');
+
+            // 3. Segunda fase: Paneo y zoom de vuelta al jugador activo tras 3200ms
+            this.time.delayedCall(3200, () => {
+                const targetPlayer = this.myPlayer || Object.values(this.playersLookup)[0];
+                const tx = targetPlayer ? targetPlayer.sprite.x : mapW / 2;
+                const ty = targetPlayer ? targetPlayer.sprite.y : mapH / 2;
+                
+                this.cameras.main.pan(tx, ty, 1600, 'Sine.easeInOut');
+                this.cameras.main.zoomTo(0.85, 1600, 'Sine.easeInOut');
+
+                // 4. Tercera fase: Iniciar juego y seguimiento tras terminar el segundo paneo (1600ms adicionales)
+                this.time.delayedCall(1600, () => {
+                    this.introCinematicActive = false;
+                    if (targetPlayer) {
+                        this.cameraSystem.followPlayer(targetPlayer.sprite);
+                    }
+                    this.cameras.main.setDeadzone(120, 80);
+                    this.turnManager.startGame();
+                });
+            });
+        } else {
+            // Comportamiento original rápido para otros mapas
+            this.introCinematicActive = false;
+            if (this.myPlayer) {
+                this.cameraSystem.followPlayer(this.myPlayer.sprite);
+            }
+            this.time.delayedCall(1000, () => {
+                this.turnManager.startGame();
+            });
+        }
     }
 
     fireProjectile(pointer) {
@@ -347,6 +465,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     update(time, delta) {
+        if (this.terrainManager) {
+            this.terrainManager.update(time, delta);
+        }
+
         if (this.turnManager.isGameOver) return;
 
         // Update del TurnManager (countdown, etc.)

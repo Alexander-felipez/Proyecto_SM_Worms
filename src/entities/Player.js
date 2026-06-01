@@ -52,6 +52,7 @@ export class Player {
             friction: 0.15, 
             density: 0.05, 
             label: `player_${id}`,
+            chamfer: { radius: 6 }, // Esquinas redondeadas (chamfer) para evitar atascarse en bordes
             collisionFilter: {
                 group: -1,      // Grupo negativo: los jugadores nunca colisionan entre sí
                 category: 0x0002,
@@ -99,7 +100,7 @@ export class Player {
                 const { bodyA, bodyB } = pair;
                 const isMe = bodyA === this.sprite.body || bodyB === this.sprite.body;
                 const otherLabel = bodyA === this.sprite.body ? bodyB.label : bodyA.label;
-                if (isMe && (otherLabel === 'terrain' || otherLabel === 'ground')) {
+                if (isMe && (otherLabel === 'terrain' || otherLabel === 'ground' || otherLabel === 'bridge' || otherLabel === 'tree' || otherLabel === 'decoration')) {
                     this.canJump = true;
                 }
             }
@@ -312,17 +313,41 @@ export class Player {
         // hasFired bloquea movimiento desde el disparo hasta que el TurnManager cambie turno
         if (this.isLocal && canAct && !this.hasFired && (!this.scene.socket || this.isHost)) {
             let walking = false;
+            let dir = 0;
             if (cursors.left.isDown) {
                 this.sprite.setVelocityX(-GAME_CONFIG.PLAYER.MOVE_SPEED);
                 if (!this.weaponSprite.visible) this.sprite.setFlipX(true);
                 walking = true;
+                dir = -1;
             } else if (cursors.right.isDown) {
                 this.sprite.setVelocityX(GAME_CONFIG.PLAYER.MOVE_SPEED);
                 if (!this.weaponSprite.visible) this.sprite.setFlipX(false);
                 walking = true;
+                dir = 1;
             } else {
                 // Sin input: frenar horizontalmente al instante (sin deslizamiento)
                 this.sprite.setVelocityX(0);
+            }
+
+            // --- Step-up Assist (Subir escalones <= 16px sin saltar) ---
+            if (walking && this.scene.terrainManager) {
+                const checkDist = 14;   // Justo adelante del gusanito (ancho 24px)
+                const footX = this.sprite.x + dir * checkDist;
+                const footY = this.sprite.y + 14;   // altura de los pies
+                
+                // Si hay un obstáculo sólido en los pies
+                if (this.scene.terrainManager.isPointSolid(footX, footY)) {
+                    const kneeY = this.sprite.y - 2; // altura de rodillas/cintura
+                    // Y la zona superior está libre (obstáculo bajo de máx 16px)
+                    if (!this.scene.terrainManager.isPointSolid(footX, kneeY)) {
+                        // Assist: Desplazar ligeramente hacia arriba y dar impulso adelante
+                        this.scene.matter.body.setPosition(this.sprite.body, {
+                            x: this.sprite.x + dir * 1.5,
+                            y: this.sprite.y - 5
+                        });
+                        this.sprite.setVelocityX(dir * GAME_CONFIG.PLAYER.MOVE_SPEED);
+                    }
+                }
             }
             
             // Efecto de polvo al caminar
@@ -398,9 +423,14 @@ export class Player {
                 this.createDustPoof(4);
             }
             
-            // Si el jugador cae al agua/vacío (debajo del mapa)
-            if (this.sprite.y > GAME_CONFIG.PLAYER.FALL_DEATH_Y) {
+            // Si el jugador cae al agua (por debajo del waterLevel) o al vacío
+            const waterLevel = this.scene.terrainManager ? this.scene.terrainManager.waterLevel : GAME_CONFIG.PLAYER.FALL_DEATH_Y;
+            if (this.sprite.y > waterLevel) {
                 this.deathCause = this.scene.hasWater === false ? 'void' : 'water';
+                if (this.deathCause === 'water') {
+                    // Disparar salpicadura reactiva en el waterLevel
+                    this.scene.events.emit('waterSplash', { x: this.sprite.x, y: waterLevel, force: 1.8 });
+                }
                 this.takeDamage(this.hp);
             }
         } else if (this.hasFired) {
