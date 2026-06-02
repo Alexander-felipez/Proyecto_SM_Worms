@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: './',
+   base: '/WORMS-2D/',
   server: {
     port: 3000
   },
